@@ -5,6 +5,7 @@ import '../widgets/section_header.dart';
 import 'concerts_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
+import 'firebase_test_screen.dart';
 
 /// Màn hình Home - Hiển thị các playlist, album gần đây và đề xuất
 class HomeScreen extends StatelessWidget {
@@ -62,10 +63,30 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const Icon(
-                      Icons.settings_outlined,
-                      color: Colors.white,
-                      size: 24,
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.cloud_done,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const FirebaseTestScreen(),
+                              ),
+                            );
+                          },
+                          tooltip: 'Test Firebase Connection',
+                        ),
+                        const Icon(
+                          Icons.settings_outlined,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ],
                     ),
                   ],
                 ),

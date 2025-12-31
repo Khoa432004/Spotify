@@ -43,3 +43,18 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase config files (optional - uncomment if you don't want to commit)
+# .firebaserc
+# firebase.json
+# firestore.rules
+# firestore.indexes.json
+# storage.rules
+
+# Local properties (may contain sensitive info)
+android/local.properties
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+
+# OS files
+Thumbs.db

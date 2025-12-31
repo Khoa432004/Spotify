@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function để check role
+    function hasRole(role) {
+      return request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+    
+    // Users can read/write their own data
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Songs, albums, artists are public read (no auth required)
+    match /songs/{songId} {
+      allow read: if true; // Public read for music streaming
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    match /albums/{albumId} {
+      allow read: if true; // Public read for music streaming
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    match /artists/{artistId} {
+      allow read: if true; // Public read for music streaming
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    // User-specific data
+    match /userLikes/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /userPlayback/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /userDownloads/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Playlists
+    match /playlists/{playlistId} {
+      // Public playlists can be read by anyone, private playlists only by owner
+      allow read: if resource.data.isPublic == true || 
+        (request.auth != null && resource.data.ownerId == request.auth.uid);
+      // Allow write for seeding (temporary - remove in production)
+      allow create: if true; // TODO: Change to require auth in production
+      allow update, delete: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+    }
+    
+    // Concerts - public read
+    match /concerts/{concertId} {
+      allow read: if true; // Public read
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && 
+        (resource.data.userId == null || resource.data.userId == request.auth.uid);
+      allow write: if request.auth != null && hasRole('admin');
+    }
+    
+    // Podcasts - public read
+    match /podcasts/{podcastId} {
+      allow read: if true; // Public read
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    match /podcastEpisodes/{episodeId} {
+      allow read: if true; // Public read
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    // Genres - public read
+    match /genres/{genreId} {
+      allow read: if true; // Public read
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    // Home content - public read
+    match /homeContent/{contentId} {
+      allow read: if true; // Public read
+      // Allow write for seeding (temporary - remove in production)
+      allow write: if true; // TODO: Change to require admin in production
+    }
+    
+    // Search history - user specific
+    match /searchHistory/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Test collection - allow for testing purposes
+    match /test/{testId} {
+      allow read, write: if true; // Public for testing
+    }
+  }
+}
+
