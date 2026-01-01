@@ -228,13 +228,7 @@ class ArtistDetailScreen extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => PlayerScreen(
-                                        songTitle: popularSongs.isNotEmpty
-                                            ? popularSongs[0]['title']
-                                                  as String?
-                                            : null,
-                                        artistName: artistName,
-                                      ),
+                                      builder: (context) => const PlayerScreen(),
                                     ),
                                   );
                                 },
@@ -410,11 +404,7 @@ class ArtistDetailScreen extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => PlayerScreen(
-                                  songTitle: song['title'] as String?,
-                                  artistName: artistName,
-                                  albumArt: song['artwork'] as String?,
-                                ),
+                                builder: (context) => const PlayerScreen(),
                               ),
                             );
                           },

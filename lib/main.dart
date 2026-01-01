@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:device_preview/device_preview.dart';
 import 'package:flutter/foundation.dart';
+import 'package:provider/provider.dart';
 import 'database/firebase_setup.dart';
+import 'providers/music_player_provider.dart';
 import 'screens/home_screen.dart';
 
 void main() async {
@@ -18,7 +20,12 @@ void main() async {
   runApp(
     DevicePreview(
       enabled: !kReleaseMode, // Chỉ bật trong chế độ debug/profile
-      builder: (context) => const MyApp(),
+      builder: (context) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => MusicPlayerProvider()),
+        ],
+        child: const MyApp(),
+      ),
     ),
   );
 }

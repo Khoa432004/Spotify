@@ -1,32 +1,118 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
 import 'player_screen.dart';
+import '../database/firebase_setup.dart';
+import '../database/models/song_model.dart';
+import '../providers/music_player_provider.dart';
 
 /// Màn hình chi tiết Album
-class AlbumDetailScreen extends StatelessWidget {
+class AlbumDetailScreen extends StatefulWidget {
   final String albumName;
   final String artistName;
   final String? albumArt;
+  final String? albumId; // Optional: để fetch từ database
 
   const AlbumDetailScreen({
     super.key,
     required this.albumName,
     required this.artistName,
     this.albumArt,
+    this.albumId,
   });
 
   @override
+  State<AlbumDetailScreen> createState() => _AlbumDetailScreenState();
+}
+
+class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
+  List<SongModel>? _songs;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSongs();
+  }
+
+  Future<void> _loadSongs() async {
+    if (widget.albumId == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final songs = await FirebaseSetup.databaseService
+          .getAlbumSongs(widget.albumId!);
+      setState(() {
+        _songs = songs;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('❌ Lỗi khi load songs: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _playSong(SongModel song, {bool shuffle = false}) async {
+    final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+
+    try {
+      // Nếu có queue (songs), phát với queue
+      if (_songs != null && _songs!.isNotEmpty) {
+        final index = _songs!.indexWhere((s) => s.id == song.id);
+        await player.playSong(song, queue: _songs, initialIndex: index);
+
+        // Nếu shuffle được yêu cầu, bật shuffle
+        if (shuffle && !player.shuffleMode) {
+          player.toggleShuffle();
+        }
+      } else {
+        // Nếu không có queue, chỉ phát bài này
+        await player.playSong(song);
+      }
+
+      // Navigate to player screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const PlayerScreen()),
+      );
+    } catch (e) {
+      // Hiển thị lỗi cho user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Không thể phát nhạc: ${e.toString().contains('404') || e.toString().contains('not found') ? 'File audio không tồn tại' : e.toString()}',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      print('❌ Lỗi khi phát nhạc: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Tracks data
-    final List<Map<String, String>> tracks = [
+    // Fallback tracks data nếu không có songs từ database
+    final List<Map<String, String>> fallbackTracks = [
       {'title': 'Creation Comes Alive', 'artist': 'Petit Biscuit, SONIA'},
       {'title': 'Problems', 'artist': 'Petit Biscuit, Lido'},
       {'title': 'Follow Me', 'artist': 'Petit Biscuit,'},
       {'title': 'Beam', 'artist': 'Petit Biscuit'},
       {'title': 'Break Up', 'artist': 'Petit Biscuit'},
     ];
+
+    // Sử dụng songs từ database nếu có, nếu không dùng fallback
+    final hasSongs = _songs != null && _songs!.isNotEmpty;
+    final displaySongs = hasSongs ? _songs! : null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -89,9 +175,9 @@ class AlbumDetailScreen extends StatelessWidget {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(4),
-                          child: albumArt != null
+                          child: widget.albumArt != null
                               ? Image.network(
-                                  albumArt!,
+                                  widget.albumArt!,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) {
                                     return Container(
@@ -104,27 +190,42 @@ class AlbumDetailScreen extends StatelessWidget {
                                     );
                                   },
                                 )
-                              : Image.network(
-                                  'https://www.figma.com/api/mcp/asset/6b9b70b4-d79d-4f74-bafd-487d17a98564',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: Colors.grey[800],
-                                      child: const Icon(
-                                        Icons.album,
-                                        size: 100,
-                                        color: Colors.grey,
-                                      ),
-                                    );
-                                  },
-                                ),
+                              : (hasSongs && displaySongs!.isNotEmpty && displaySongs[0].artworkUrl != null)
+                                  ? Image.network(
+                                      displaySongs[0].artworkUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Container(
+                                          color: Colors.grey[800],
+                                          child: const Icon(
+                                            Icons.album,
+                                            size: 100,
+                                            color: Colors.grey,
+                                          ),
+                                        );
+                                      },
+                                    )
+                                  : Image.network(
+                                      'https://www.figma.com/api/mcp/asset/6b9b70b4-d79d-4f74-bafd-487d17a98564',
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return Container(
+                                          color: Colors.grey[800],
+                                          child: const Icon(
+                                            Icons.album,
+                                            size: 100,
+                                            color: Colors.grey,
+                                          ),
+                                        );
+                                      },
+                                    ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 32),
                     // Album name
                     Text(
-                      albumName,
+                      widget.albumName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -155,7 +256,7 @@ class AlbumDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          artistName,
+                          widget.artistName,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11.3,
@@ -226,20 +327,17 @@ class AlbumDetailScreen extends StatelessWidget {
                         // Play button
                         GestureDetector(
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => PlayerScreen(
-                                  songTitle: tracks.isNotEmpty
-                                      ? tracks[0]['title']
-                                      : null,
-                                  artistName: tracks.isNotEmpty
-                                      ? tracks[0]['artist']
-                                      : artistName,
-                                  albumArt: albumArt,
+                            if (hasSongs && displaySongs!.isNotEmpty) {
+                              _playSong(displaySongs[0]);
+                            } else {
+                              // Fallback: navigate to player screen (no song to play)
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const PlayerScreen(),
                                 ),
-                              ),
-                            );
+                              );
+                            }
                           },
                           child: Container(
                             width: 56,
@@ -257,86 +355,162 @@ class AlbumDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         // Shuffle button (small)
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.shuffle,
-                            color: Color(0xFF57B560),
-                            size: 12,
+                        GestureDetector(
+                          onTap: () {
+                            if (hasSongs && displaySongs!.isNotEmpty) {
+                              _playSong(displaySongs[0], shuffle: true);
+                            }
+                          },
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.shuffle,
+                              color: Color(0xFF57B560),
+                              size: 12,
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 24),
-                    // Track list
-                    ...List.generate(tracks.length, (index) {
-                      final track = tracks[index];
-                      return GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => PlayerScreen(
-                                songTitle: track['title'],
-                                artistName: track['artist'],
-                                albumArt: albumArt,
-                              ),
-                            ),
-                          );
-                        },
+                    // Loading indicator
+                    if (_isLoading)
+                      const Center(
                         child: Padding(
-                          padding: const EdgeInsets.only(bottom: 16.0),
-                          child: Row(
-                            children: [
-                              // Download icon
-                              Icon(
-                                Icons.download,
-                                color: Colors.grey[400],
-                                size: 13,
-                              ),
-                              const SizedBox(width: 12),
-                              // Track info
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      track['title']!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      track['artist']!,
-                                      style: TextStyle(
-                                        color: Colors.grey[400],
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // More icon
-                              IconButton(
-                                icon: Icon(
-                                  Icons.more_horiz,
-                                  color: Colors.grey[400],
-                                  size: 20,
-                                ),
-                                onPressed: () {},
-                              ),
-                            ],
-                          ),
+                          padding: EdgeInsets.all(32.0),
+                          child: CircularProgressIndicator(),
                         ),
-                      );
-                    }),
+                      )
+                    // Track list
+                    else if (hasSongs)
+                      ...List.generate(displaySongs!.length, (index) {
+                        final song = displaySongs[index];
+                        return GestureDetector(
+                          onTap: () => _playSong(song),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Row(
+                              children: [
+                                // Download icon
+                                Icon(
+                                  Icons.download,
+                                  color: Colors.grey[400],
+                                  size: 13,
+                                ),
+                                const SizedBox(width: 12),
+                                // Track info
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        song.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        song.artistName,
+                                        style: TextStyle(
+                                          color: Colors.grey[400],
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Duration
+                                Text(
+                                  song.formattedDuration,
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // More icon
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.more_horiz,
+                                    color: Colors.grey[400],
+                                    size: 20,
+                                  ),
+                                  onPressed: () {},
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      })
+                    // Fallback tracks
+                    else
+                      ...List.generate(fallbackTracks.length, (index) {
+                        final track = fallbackTracks[index];
+                        return GestureDetector(
+                          onTap: () {
+                            // Fallback: navigate to player screen (no song to play)
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const PlayerScreen(),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Row(
+                              children: [
+                                // Download icon
+                                Icon(
+                                  Icons.download,
+                                  color: Colors.grey[400],
+                                  size: 13,
+                                ),
+                                const SizedBox(width: 12),
+                                // Track info
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        track['title']!,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        track['artist']!,
+                                        style: TextStyle(
+                                          color: Colors.grey[400],
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // More icon
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.more_horiz,
+                                    color: Colors.grey[400],
+                                    size: 20,
+                                  ),
+                                  onPressed: () {},
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
                     const SizedBox(height: 100), // Space for bottom nav
                   ],
                 ),

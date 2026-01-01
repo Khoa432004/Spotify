@@ -91,15 +91,7 @@ class ArtistsPickScreen extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => PlayerScreen(
-                                  songTitle: popularReleases.isNotEmpty
-                                      ? popularReleases[0]['title'] as String?
-                                      : null,
-                                  artistName: artistName,
-                                  albumArt: popularReleases.isNotEmpty
-                                      ? popularReleases[0]['artwork'] as String?
-                                      : null,
-                                ),
+                                builder: (context) => const PlayerScreen(),
                               ),
                             );
                           },

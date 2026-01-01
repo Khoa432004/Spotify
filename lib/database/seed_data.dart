@@ -12,6 +12,31 @@ import 'constants.dart';
 /// Script để seed dummy data vào Firestore
 class SeedData {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  
+  // Sample audio URLs - Mix từ nhiều nguồn để tránh 404
+  static final List<String> _sampleAudioUrls = [
+    // SoundHelix samples (nếu còn hoạt động)
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3',
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3',
+    // File examples backup
+    'https://file-examples.com/storage/fe68c26fa14a72743a1f73d/2017/11/file_example_MP3_700KB.mp3',
+    'https://file-examples.com/storage/fe68c26fa14a72743a1f73d/2017/11/file_example_MP3_1MG.mp3',
+    // Internet Archive backup
+    'https://archive.org/download/testmp3testfile/mpthreetest.mp3',
+  ];
+  
+  /// Lấy sample audio URL theo index (circular)
+  static String _getSampleAudioUrl(int index) {
+    return _sampleAudioUrls[index % _sampleAudioUrls.length];
+  }
 
   /// Chạy tất cả seed functions
   Future<void> seedAll() async {
@@ -266,7 +291,8 @@ class SeedData {
           'duration': 180 + (i * 30), // 3-5 minutes
           'genre': genre,
           'genres': genres,
-          'audioUrl': 'https://example.com/audio/${albumId}_${i}.mp3',
+          // Sử dụng multiple sample audio URLs để tránh 404
+          'audioUrl': _getSampleAudioUrl(i),
           'artworkUrl': albumData['artworkUrl'],
           'releaseDate': albumData['releaseDate'],
           'playCount': 1000000 + (i * 100000),
@@ -657,6 +683,213 @@ class SeedData {
     }
     
     print('✅ Đã seed ${podcasts.length} podcasts');
+  }
+
+  /// Xóa tất cả songs cũ trong Firestore
+  Future<void> deleteAllSongs() async {
+    print('🗑️ Đang xóa tất cả songs cũ...');
+    
+    try {
+      // Lấy tất cả songs
+      final songsSnapshot = await _firestore
+          .collection(FirestoreCollections.songs)
+          .get();
+      
+      if (songsSnapshot.docs.isEmpty) {
+        print('ℹ️ Không có songs nào để xóa.');
+        return;
+      }
+      
+      int deletedCount = 0;
+      
+      // Xóa songs
+      for (var doc in songsSnapshot.docs) {
+        await doc.reference.delete();
+        deletedCount++;
+      }
+      
+      // Xóa songIds từ albums
+      final albumsSnapshot = await _firestore
+          .collection(FirestoreCollections.albums)
+          .get();
+      
+      for (var albumDoc in albumsSnapshot.docs) {
+        await albumDoc.reference.update({
+          'songIds': [],
+          'totalTracks': 0,
+        });
+      }
+      
+      // Xóa songIds từ artists
+      final artistsSnapshot = await _firestore
+          .collection(FirestoreCollections.artists)
+          .get();
+      
+      for (var artistDoc in artistsSnapshot.docs) {
+        await artistDoc.reference.update({
+          'songIds': [],
+        });
+      }
+      
+      print('✅ Đã xóa $deletedCount songs cũ');
+    } catch (e) {
+      print('❌ Lỗi khi xóa songs: $e');
+      rethrow;
+    }
+  }
+
+  /// Seed songs mới với URLs tùy chỉnh
+  Future<void> seedSongsWithCustomUrls(Map<String, Map<String, dynamic>> songUrls) async {
+    print('📝 Đang seed songs mới với URLs tùy chỉnh...');
+    
+    try {
+      // Lấy hoặc tạo album mặc định
+      final albumsSnapshot = await _firestore
+          .collection(FirestoreCollections.albums)
+          .limit(1)
+          .get();
+      
+      String? defaultAlbumId;
+      String? defaultArtistId;
+      String? defaultArtistName = 'Various Artists';
+      
+      if (albumsSnapshot.docs.isNotEmpty) {
+        final albumData = albumsSnapshot.docs.first.data();
+        defaultAlbumId = albumsSnapshot.docs.first.id;
+        defaultArtistId = albumData['artistId'] as String?;
+        defaultArtistName = albumData['artistName'] as String?;
+      } else {
+        // Tạo artist và album mặc định nếu chưa có
+        final artistRef = await _firestore
+            .collection(FirestoreCollections.artists)
+            .add({
+          'name': defaultArtistName,
+          'imageUrl': null,
+          'bio': 'Various Artists',
+          'genres': ['Pop', 'Hip-Hop', 'R&B'],
+          'monthlyListeners': 0,
+          'followerCount': 0,
+          'verified': false,
+          'albumIds': [],
+          'songIds': [],
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        defaultArtistId = artistRef.id;
+        
+        final albumRef = await _firestore
+            .collection(FirestoreCollections.albums)
+            .add({
+          'title': 'My Playlist',
+          'artistId': defaultArtistId,
+          'artistName': defaultArtistName,
+          'artworkUrl': null,
+          'releaseDate': FieldValue.serverTimestamp(),
+          'genre': 'Pop',
+          'genres': ['Pop'],
+          'totalTracks': 0,
+          'duration': 0,
+          'songIds': [],
+          'playCount': 0,
+          'likeCount': 0,
+          'description': 'Custom playlist',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        defaultAlbumId = albumRef.id;
+      }
+      
+      final List<String> allSongIds = [];
+      int index = 0;
+      
+      for (var entry in songUrls.entries) {
+        final songData = entry.value;
+        
+        final title = songData['title'] as String? ?? 'Unknown Song';
+        final audioUrl = songData['audioUrl'] as String? ?? '';
+        final artistName = songData['artistName'] as String? ?? defaultArtistName!;
+        final albumName = songData['albumName'] as String? ?? 'My Playlist';
+        final duration = songData['duration'] as int? ?? 180;
+        final genre = songData['genre'] as String? ?? 'Pop';
+        final genres = (songData['genres'] as List?)?.cast<String>() ?? [genre];
+        
+        if (audioUrl.isEmpty) {
+          print('⚠️ Bỏ qua song "$title": không có audioUrl');
+          continue;
+        }
+        
+        final songDocData = {
+          'title': title,
+          'artistId': defaultArtistId!,
+          'artistName': artistName,
+          'albumId': defaultAlbumId!,
+          'albumName': albumName,
+          'duration': duration,
+          'genre': genre,
+          'genres': genres,
+          'audioUrl': audioUrl,
+          'artworkUrl': songData['artworkUrl'] as String?,
+          'releaseDate': FieldValue.serverTimestamp(),
+          'playCount': 0,
+          'likeCount': 0,
+          'isExplicit': songData['isExplicit'] as bool? ?? false,
+          'trackNumber': index + 1,
+          'popularity': 50,
+          'tags': [
+            title.toLowerCase(),
+            albumName.toLowerCase(),
+            artistName.toLowerCase(),
+            ...genres.map((g) => g.toLowerCase()),
+          ],
+          'createdAt': FieldValue.serverTimestamp(),
+        };
+        
+        final songRef = await _firestore
+            .collection(FirestoreCollections.songs)
+            .add(songDocData);
+        
+        allSongIds.add(songRef.id);
+        
+        // Update album với songId
+        await _firestore
+            .collection(FirestoreCollections.albums)
+            .doc(defaultAlbumId)
+            .update({
+          'songIds': FieldValue.arrayUnion([songRef.id]),
+          'totalTracks': allSongIds.length,
+        });
+        
+        // Update artist với songId
+        await _firestore
+            .collection(FirestoreCollections.artists)
+            .doc(defaultArtistId)
+            .update({
+          'songIds': FieldValue.arrayUnion([songRef.id]),
+        });
+        
+        print('  ✅ Đã tạo song: $title - $artistName');
+        index++;
+      }
+      
+      print('✅ Đã seed ${allSongIds.length} songs mới');
+    } catch (e) {
+      print('❌ Lỗi khi seed songs: $e');
+      rethrow;
+    }
+  }
+
+  /// Reset và seed lại toàn bộ songs với URLs mới
+  Future<void> resetAndSeedSongs(Map<String, Map<String, dynamic>> songUrls) async {
+    print('🔄 Reset và seed lại songs...');
+    
+    try {
+      await deleteAllSongs();
+      await seedSongsWithCustomUrls(songUrls);
+      print('✅ Hoàn tất reset và seed songs!');
+    } catch (e) {
+      print('❌ Lỗi khi reset songs: $e');
+      rethrow;
+    }
   }
 }
 

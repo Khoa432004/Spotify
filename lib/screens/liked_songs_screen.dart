@@ -114,9 +114,6 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => const PlayerScreen(
-                                        songTitle:
-                                            'Dancin (feat. Luvli) - Krono Remix',
-                                        artistName: 'Aaron Smith, Krono, Luvli',
                                       ),
                                     ),
                                   );
