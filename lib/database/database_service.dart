@@ -399,26 +399,130 @@ class DatabaseService {
     int limit = 20,
   }) async {
     try {
-      Query query = _firestore.collection(FirestoreCollections.concerts);
+      Query query = _firestore.collection(FirestoreCollections.concerts)
+          .where('status', isEqualTo: 'upcoming')
+          .limit(100);
 
-      if (artistId != null) {
-        query = query.where('artistId', isEqualTo: artistId);
+      final snapshot = await query.get();
+      var concerts = <ConcertModel>[];
+      
+      for (var doc in snapshot.docs) {
+        try {
+          final concert = ConcertModel.fromFirestore(doc);
+          concerts.add(concert);
+        } catch (e) {
+          // Skip invalid concerts
+        }
       }
 
-      final snapshot = await query
-          .where('status', isEqualTo: 'upcoming')
-          .where('dateTime', isGreaterThan: Timestamp.now())
-          .orderBy('dateTime')
-          .limit(limit)
-          .get();
+      if (artistId != null) {
+        concerts = concerts.where((c) => c.artistId == artistId).toList();
+      }
 
-      return snapshot.docs
-          .map((doc) => ConcertModel.fromFirestore(doc))
-          .toList();
+      concerts.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+      return concerts.take(limit).toList();
     } catch (e) {
-      print('Error getting upcoming concerts: $e');
       return [];
     }
+  }
+
+  Future<List<ConcertModel>> getConcertsByLocation({
+    required String city,
+    int limit = 50,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.concerts)
+          .where('status', isEqualTo: 'upcoming')
+          .limit(100)
+          .get();
+
+      final filtered = <ConcertModel>[];
+      for (var doc in snapshot.docs) {
+        try {
+          final concert = ConcertModel.fromFirestore(doc);
+          final isInCity = concert.venue.city.toLowerCase() == city.toLowerCase();
+          if (isInCity) {
+            filtered.add(concert);
+          }
+        } catch (e) {
+          // Skip invalid concerts
+        }
+      }
+      
+      filtered.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+      return filtered.take(20).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<ConcertModel>> getRecommendedConcerts({
+    int limit = 20,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.concerts)
+          .where('status', isEqualTo: 'upcoming')
+          .limit(100)
+          .get();
+
+      final concerts = <ConcertModel>[];
+      for (var doc in snapshot.docs) {
+        try {
+          final concert = ConcertModel.fromFirestore(doc);
+          concerts.add(concert);
+        } catch (e) {
+          // Skip invalid concerts
+        }
+      }
+      
+      concerts.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+      return concerts.take(limit).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Tạo notification cho concert sắp tới
+  Future<void> createConcertNotification({
+    required String userId,
+    required String concertId,
+    required ConcertModel concert,
+    DateTime? scheduledFor,
+  }) async {
+    try {
+      final notificationData = {
+        'userId': userId,
+        'type': NotificationType.concertReminder.value,
+        'title': 'Concert Reminder: ${concert.artistName}',
+        'message': '${concert.title} is coming up on ${_formatConcertDate(concert.dateTime)} at ${concert.venue.name}',
+        'imageUrl': concert.imageUrl,
+        'actionUrl': '/concerts/$concertId',
+        'read': false,
+        'data': {
+          'concertId': concertId,
+          'artistName': concert.artistName,
+          'venue': concert.venue.name,
+          'dateTime': Timestamp.fromDate(concert.dateTime),
+        },
+        'createdAt': FieldValue.serverTimestamp(),
+        if (scheduledFor != null) 'scheduledFor': Timestamp.fromDate(scheduledFor),
+      };
+
+      await _firestore
+          .collection(FirestoreCollections.notifications)
+          .add(notificationData);
+    } catch (e) {
+      print('Error creating concert notification: $e');
+      rethrow;
+    }
+  }
+
+  String _formatConcertDate(DateTime dateTime) {
+    final months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    final weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return '${weekdays[dateTime.weekday % 7]}, ${dateTime.day} ${months[dateTime.month - 1]}';
   }
 
   // ==================== PODCAST OPERATIONS ====================
@@ -440,6 +544,32 @@ class DatabaseService {
     }
   }
 
+  /// Lấy danh sách podcasts
+  Future<List<PodcastModel>> getPodcasts({
+    String? category,
+    int limit = 20,
+  }) async {
+    try {
+      Query query = _firestore.collection(FirestoreCollections.podcasts);
+
+      if (category != null) {
+        query = query.where('categories', arrayContains: category);
+      }
+
+      final snapshot = await query
+          .orderBy('followerCount', descending: true)
+          .limit(limit)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => PodcastModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error getting podcasts: $e');
+      return [];
+    }
+  }
+
   /// Lấy episodes của podcast
   Future<List<PodcastEpisodeModel>> getPodcastEpisodes(String podcastId) async {
     try {
@@ -454,6 +584,26 @@ class DatabaseService {
           .toList();
     } catch (e) {
       print('Error getting podcast episodes: $e');
+      return [];
+    }
+  }
+
+  /// Lấy recent podcast episodes (tất cả podcasts)
+  Future<List<PodcastEpisodeModel>> getRecentPodcastEpisodes({
+    int limit = 20,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.podcastEpisodes)
+          .orderBy('releaseDate', descending: true)
+          .limit(limit)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => PodcastEpisodeModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error getting recent podcast episodes: $e');
       return [];
     }
   }

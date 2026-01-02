@@ -5,6 +5,10 @@ import 'dart:convert';
 import '../database/firebase_setup.dart';
 import '../database/database_service.dart';
 import '../database/seed_data.dart';
+import '../database/run_seed_data.dart';
+import '../database/update_concerts_dates.dart';
+import '../database/update_podcast_audio_urls.dart';
+import '../database/reset_and_reseed_podcasts.dart';
 import '../database/custom_song_data.dart';
 import '../providers/music_player_provider.dart';
 import '../services/music_player_service.dart';
@@ -265,24 +269,145 @@ class _FirebaseTestScreenState extends State<FirebaseTestScreen> {
                             _statusMessage = 'Đang seed data...';
                           });
                           try {
-                            final seedData = SeedData();
-                            await seedData.seedAll();
+                            await runSeedData();
                             setState(() {
                               _statusMessage = '✅ Đã seed data thành công!';
                               _isLoading = false;
                             });
                             _addResult('✅ Seed data hoàn tất!');
+                            _loadSongs(); // Reload songs after seeding
                           } catch (e) {
                             setState(() {
                               _statusMessage = '❌ Lỗi seed data: $e';
                               _isLoading = false;
                             });
+                            _addResult('❌ Lỗi: $e');
                           }
                         },
                         icon: const Icon(Icons.add_circle),
-                        label: const Text('Seed Data vào Firestore'),
+                        label: const Text('Seed All Data vào Firestore'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1DB954),
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Seed Concerts & Podcasts Only Button
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          setState(() {
+                            _isLoading = true;
+                            _statusMessage = 'Đang seed concerts và podcasts...';
+                          });
+                          try {
+                            await runSeedConcertsAndPodcasts();
+                            setState(() {
+                              _statusMessage = '✅ Đã seed concerts và podcasts thành công!';
+                              _isLoading = false;
+                            });
+                            _addResult('✅ Seed concerts và podcasts hoàn tất!');
+                          } catch (e) {
+                            setState(() {
+                              _statusMessage = '❌ Lỗi: $e';
+                              _isLoading = false;
+                            });
+                            _addResult('❌ Lỗi: $e');
+                          }
+                        },
+                        icon: const Icon(Icons.event),
+                        label: const Text('Seed Concerts & Podcasts Only'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Update Concerts Dates Button
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          setState(() {
+                            _isLoading = true;
+                            _statusMessage = 'Đang update dates cho concerts...';
+                          });
+                          try {
+                            await updateConcertsDates();
+                            setState(() {
+                              _statusMessage = '✅ Đã update dates thành công!';
+                              _isLoading = false;
+                            });
+                            _addResult('✅ Update concerts dates hoàn tất!');
+                          } catch (e) {
+                            setState(() {
+                              _statusMessage = '❌ Lỗi: $e';
+                              _isLoading = false;
+                            });
+                            _addResult('❌ Lỗi: $e');
+                          }
+                        },
+                        icon: const Icon(Icons.update),
+                        label: const Text('Update Concerts Dates'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Update Podcast Audio URLs Button
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          setState(() {
+                            _isLoading = true;
+                            _statusMessage = 'Đang cập nhật podcast audio URLs...';
+                          });
+                          try {
+                            await updatePodcastAudioUrls();
+                            setState(() {
+                              _statusMessage = '✅ Đã cập nhật podcast audio URLs thành công!';
+                              _isLoading = false;
+                            });
+                            _addResult('✅ Update podcast audio URLs hoàn tất!');
+                          } catch (e) {
+                            setState(() {
+                              _statusMessage = '❌ Lỗi: $e';
+                              _isLoading = false;
+                            });
+                            _addResult('❌ Lỗi: $e');
+                          }
+                        },
+                        icon: const Icon(Icons.audiotrack),
+                        label: const Text('Update Podcast Audio URLs'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Reset and Reseed Podcasts Button
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          setState(() {
+                            _isLoading = true;
+                            _statusMessage = 'Đang xóa và seed lại podcasts...';
+                          });
+                          try {
+                            await resetAndReseedPodcasts();
+                            setState(() {
+                              _statusMessage = '✅ Đã xóa và seed lại podcasts thành công!';
+                              _isLoading = false;
+                            });
+                            _addResult('✅ Reset và reseed podcasts hoàn tất!');
+                          } catch (e) {
+                            setState(() {
+                              _statusMessage = '❌ Lỗi: $e';
+                              _isLoading = false;
+                            });
+                            _addResult('❌ Lỗi: $e');
+                          }
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reset & Reseed Podcasts'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
                         ),
                       ),

@@ -1,79 +1,147 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
 import 'upcoming_concerts_screen.dart';
+import '../database/database.dart';
+import '../database/models/concert_model.dart';
+import '../database/constants.dart';
 
 /// Màn hình Concerts - Hiển thị danh sách concerts được đề xuất
-class ConcertsScreen extends StatelessWidget {
+class ConcertsScreen extends StatefulWidget {
   const ConcertsScreen({super.key});
 
-  // Recommended concerts data
-  final List<Map<String, dynamic>> _concerts = const [
-    {
-      'artist': 'blink-182, Simple Plan and grandson',
-      'date': 'Thu, Jul 16',
-      'location': 'Harris Park',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/62f56cdb-e4b9-4089-964d-9722575a049a',
-    },
-    {
-      'artist': 'Louis The Child, Jai Wolf and MEMBA',
-      'date': 'Fri, Aug 7',
-      'location': 'Masonic Temple',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/b4f2745e-5d71-43eb-9c37-25cd46fca191',
-    },
-    {
-      'artist': 'Jimmy Eat World, The Front Bottoms and Tur...',
-      'date': 'Fri, Aug 21',
-      'location': 'The Fillmore',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/fb659422-87f8-4108-8abe-2a2569f5af93',
-    },
-    {
-      'artist': 'Lane 8 and Sultan + Shepard',
-      'date': 'Fri, Aug 21',
-      'location': 'Majestic Theatre',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/b6c6f85e-919a-434a-98e6-6cd52a7b8718',
-    },
-    {
-      'artist': 'Luttrell',
-      'date': 'Thu, Aug 27',
-      'location': 'Magic Stick',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/40cae6cb-e0c6-447f-a785-8660aea92061',
-    },
-    {
-      'artist': 'Marshmello',
-      'date': 'Wed, Sep 9',
-      'location': 'Masonic Temple Theatre',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/871b2985-22e8-4b21-a514-29b6e966566b',
-    },
-    {
-      'artist': 'RAC and Hotel Garuda',
-      'date': 'Sat, Sep 12',
-      'location': 'El Club',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/51e022cf-6593-40f3-939d-d8f5b01214b1',
-    },
-    {
-      'artist': 'Galantis',
-      'date': 'Sat, Sep 19',
-      'location': 'Ford Field',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/154c32ba-d172-4389-95be-72ca39370e96',
-    },
-    {
-      'artist': 'Foo Fighters',
-      'date': 'Thu,Jul 16',
-      'location': 'Harris Park',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/aac6d9dd-a5c5-44af-8728-9d0cb8f0a82c',
-    },
-  ];
+  @override
+  State<ConcertsScreen> createState() => _ConcertsScreenState();
+}
+
+class _ConcertsScreenState extends State<ConcertsScreen> {
+  final DatabaseService _dbService = DatabaseService();
+  List<ConcertModel> _concerts = [];
+  bool _isLoading = true;
+  String _currentLocation = 'Los Angeles';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkFirestoreData();
+    _loadConcerts();
+  }
+
+  Future<void> _checkFirestoreData() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection(FirestoreCollections.concerts)
+          .limit(5)
+          .get();
+    } catch (e) {
+      // Silent check
+    }
+  }
+
+  Future<void> _loadConcerts() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      List<ConcertModel> concerts;
+      if (_currentLocation.isNotEmpty && _currentLocation != 'All Locations') {
+        concerts = await _dbService.getConcertsByLocation(
+          city: _currentLocation,
+          limit: 20,
+        );
+        if (concerts.isEmpty) {
+          concerts = await _dbService.getRecommendedConcerts(limit: 20);
+        }
+      } else {
+        concerts = await _dbService.getRecommendedConcerts(limit: 20);
+      }
+
+      setState(() {
+        _concerts = concerts;
+      });
+    } catch (e) {
+      setState(() {
+        _concerts = [];
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _showLocationDialog() async {
+    final locations = [
+      'Los Angeles',
+      'New York',
+      'Miami',
+      'San Francisco',
+      'Chicago',
+      'Detroit',
+      'Madison',
+      'All Locations',
+    ];
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF282828),
+        title: const Text(
+          'Change Location',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: locations.map((location) {
+              final isSelected = _currentLocation == location;
+              return ListTile(
+                title: Text(
+                  location,
+                  style: TextStyle(
+                    color: isSelected ? const Color(0xFF1DB954) : Colors.white,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                onTap: () => Navigator.pop(context, location),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+
+    if (selected != null && selected != _currentLocation) {
+      setState(() {
+        _currentLocation = selected;
+      });
+      await _loadConcerts();
+    }
+  }
+
+  String _formatDate(DateTime dateTime) {
+    final weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${weekdays[dateTime.weekday % 7]}, ${months[dateTime.month - 1]} ${dateTime.day}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +150,6 @@ class ConcertsScreen extends StatelessWidget {
       bottomNavigationBar: _buildBottomNavigationBar(context),
       body: Stack(
         children: [
-          // Header with gradient overlay
           Positioned(
             top: -60,
             left: -8,
@@ -90,7 +157,6 @@ class ConcertsScreen extends StatelessWidget {
             height: 347,
             child: Stack(
               children: [
-                // Background image with opacity
                 Positioned.fill(
                   child: Opacity(
                     opacity: 0.35,
@@ -103,7 +169,6 @@ class ConcertsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Gradient overlay
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
@@ -118,7 +183,6 @@ class ConcertsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Header content
                 SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 13.0),
@@ -126,7 +190,6 @@ class ConcertsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         const SizedBox(height: 60),
-                        // Back button - đặt ở đây để đảm bảo hiển thị trên cùng
                         Row(
                           children: [
                             Material(
@@ -144,7 +207,6 @@ class ConcertsScreen extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 32),
-                        // Title
                         const Text(
                           'Concerts',
                           style: TextStyle(
@@ -155,32 +217,41 @@ class ConcertsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        // Location
-                        const Text(
-                          'Los Angeles',
-                          style: TextStyle(
+                        Text(
+                          _currentLocation == 'All Locations'
+                              ? 'All Locations'
+                              : _currentLocation,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 26,
                             letterSpacing: 0.26,
                           ),
                         ),
                         const SizedBox(height: 16),
-                        // Change Location button
-                        Container(
-                          width: 156,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFF414141)),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _showLocationDialog,
                             borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'CHANGE LOCATION',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
+                            child: Container(
+                              width: 156,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: const Color(0xFF414141),
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'CHANGE LOCATION',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -192,7 +263,6 @@ class ConcertsScreen extends StatelessWidget {
               ],
             ),
           ),
-          // Content
           SafeArea(
             child: SingleChildScrollView(
               child: Column(
@@ -203,7 +273,6 @@ class ConcertsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Recommended For You section
                         const Text(
                           'Recommended For You',
                           style: TextStyle(
@@ -214,123 +283,127 @@ class ConcertsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        // Concert list
-                        ...List.generate(_concerts.length, (index) {
-                          final concert = _concerts[index];
-                          return GestureDetector(
-                            onTap: () {
-                              // Navigate to concert detail or upcoming concerts
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => UpcomingConcertsScreen(
-                                    artistName: concert['artist']
-                                        .toString()
-                                        .split(',')[0]
-                                        .trim(),
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 16.0),
-                              child: Row(
-                                children: [
-                                  // Artist image
-                                  Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: const BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.grey,
-                                    ),
-                                    child: ClipOval(
-                                      child: concert['imageUrl'] != null
-                                          ? Image.network(
-                                              concert['imageUrl']!,
-                                              fit: BoxFit.cover,
-                                              errorBuilder:
-                                                  (context, error, stackTrace) {
-                                                    return Container(
-                                                      color: Colors.grey[800]!,
-                                                    );
-                                                  },
-                                            )
-                                          : Container(color: Colors.grey[800]),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  // Concert info
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          concert['artist']!,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                            letterSpacing: 0.042,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                        if (_isLoading)
+                          const Center(child: CircularProgressIndicator())
+                        else
+                          ...List.generate(_concerts.length, (index) {
+                            final concert = _concerts[index];
+                            return GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        UpcomingConcertsScreen(
+                                          artistName: concert.artistName,
                                         ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Text(
-                                              concert['date']!,
-                                              style: TextStyle(
-                                                color: Colors.grey[400],
-                                                fontSize: 11,
-                                                letterSpacing: 0.33,
+                                  ),
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 16.0),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.grey,
+                                      ),
+                                      child: ClipOval(
+                                        child: concert.imageUrl != null
+                                            ? Image.network(
+                                                concert.imageUrl!,
+                                                fit: BoxFit.cover,
+                                                errorBuilder:
+                                                    (
+                                                      context,
+                                                      error,
+                                                      stackTrace,
+                                                    ) {
+                                                      return Container(
+                                                        color:
+                                                            Colors.grey[800]!,
+                                                      );
+                                                    },
+                                              )
+                                            : Container(
+                                                color: Colors.grey[800],
                                               ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            concert.title,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              letterSpacing: 0.042,
                                             ),
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 3,
-                                                  ),
-                                              child: Container(
-                                                width: 3,
-                                                height: 3,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey[400],
-                                                  shape: BoxShape.circle,
-                                                ),
-                                              ),
-                                            ),
-                                            Expanded(
-                                              child: Text(
-                                                concert['location']!,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                _formatDate(concert.dateTime),
                                                 style: TextStyle(
                                                   color: Colors.grey[400],
                                                   fontSize: 11,
+                                                  letterSpacing: 0.33,
                                                 ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
+                                              Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 3,
+                                                    ),
+                                                child: Container(
+                                                  width: 3,
+                                                  height: 3,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey[400],
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: Text(
+                                                  '${concert.venue.name}, ${concert.venue.city}',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[400],
+                                                    fontSize: 11,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  // Arrow
-                                  Transform.rotate(
-                                    angle: 3.14159, // 180 degrees
-                                    child: Icon(
-                                      Icons.arrow_back,
-                                      color: Colors.grey[400],
-                                      size: 20,
+                                    Transform.rotate(
+                                      angle: 3.14159,
+                                      child: Icon(
+                                        Icons.arrow_back,
+                                        color: Colors.grey[400],
+                                        size: 20,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        }),
+                            );
+                          }),
                         const SizedBox(height: 100), // Space for bottom nav
                       ],
                     ),

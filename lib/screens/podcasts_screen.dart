@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:provider/provider.dart';
 import 'library_screen.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
+import 'player_screen.dart';
+import '../database/database.dart';
+import '../database/models/podcast_model.dart';
+import '../database/models/song_model.dart';
+import '../providers/music_player_provider.dart';
 
 /// Màn hình Podcasts - Hiển thị danh sách podcast episodes
 class PodcastsScreen extends StatefulWidget {
@@ -14,8 +20,102 @@ class PodcastsScreen extends StatefulWidget {
 
 class _PodcastsScreenState extends State<PodcastsScreen> {
   String _selectedTab = 'Episodes';
+  final DatabaseService _dbService = DatabaseService();
+  List<PodcastEpisodeModel> _episodes = [];
+  bool _isLoading = true;
 
-  // Helper function to calculate text width
+  @override
+  void initState() {
+    super.initState();
+    _loadEpisodes();
+  }
+
+  Future<void> _loadEpisodes() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final episodes = await _dbService.getRecentPodcastEpisodes(limit: 20);
+      setState(() {
+        _episodes = episodes;
+      });
+    } catch (e) {
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) return 'YESTERDAY';
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inDays == 0) {
+      return 'TODAY';
+    } else if (difference.inDays == 1) {
+      return 'YESTERDAY';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} DAYS AGO';
+    } else {
+      return '${difference.inDays ~/ 7} WEEKS AGO';
+    }
+  }
+
+  Future<void> _playEpisode(PodcastEpisodeModel episode) async {
+    try {
+      if (episode.audioUrl.isEmpty) {
+        throw Exception('Podcast episode không có audio URL');
+      }
+
+      final uri = Uri.tryParse(episode.audioUrl);
+      if (uri == null || (!uri.hasScheme || (!uri.scheme.startsWith('http')))) {
+        throw Exception('Audio URL không hợp lệ: ${episode.audioUrl}');
+      }
+
+      final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+      
+      final song = SongModel(
+        id: episode.id,
+        title: episode.title,
+        artistId: episode.podcastId,
+        artistName: 'Podcast',
+        duration: episode.duration,
+        audioUrl: episode.audioUrl,
+        artworkUrl: episode.artworkUrl,
+        createdAt: episode.createdAt,
+      );
+
+      await player.playSong(song);
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const PlayerScreen()),
+      );
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Không thể phát podcast';
+        if (e.toString().contains('404') || e.toString().contains('not found')) {
+          errorMessage = 'File audio không tồn tại. Vui lòng kiểm tra lại URL.';
+        } else if (e.toString().contains('network') || e.toString().contains('connection')) {
+          errorMessage = 'Lỗi kết nối mạng. Vui lòng thử lại.';
+        } else {
+          errorMessage = 'Lỗi: ${e.toString()}';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
   static double _getTextWidth(
     String text,
     double fontSize,
@@ -35,39 +135,6 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
     textPainter.layout();
     return textPainter.width;
   }
-
-  final List<Map<String, dynamic>> _episodes = [
-    {
-      'title': '#250 - Joe Kisses Danny',
-      'show': 'The Basement Yard',
-      'date': 'YESTERDAY',
-      'duration': '1HR 10MIN',
-      'description':
-          'On this episode, we dive into Danny\'s dream where Joe kissed him at a party...we also dive into the dark underworld of the Karens.',
-      'artwork':
-          'https://www.figma.com/api/mcp/asset/90f55eb4-d1e2-4d43-93e6-d422dd17e6a2',
-    },
-    {
-      'title': '#249 - Danny Kisses Joe',
-      'show': 'The Basement Yard',
-      'date': 'YESTERDAY',
-      'duration': '1HR 10MIN',
-      'description':
-          'On this episode, we dive into Danny\'s dream where Joe kissed him at a party...we also dive into the dark underworld of the Karens.',
-      'artwork':
-          'https://www.figma.com/api/mcp/asset/90f55eb4-d1e2-4d43-93e6-d422dd17e6a2',
-    },
-    {
-      'title': '#248 - Kanye 2020',
-      'show': 'The Basement Yard',
-      'date': 'YESTERDAY',
-      'duration': '1HR 10MIN',
-      'description':
-          'On this episode, we dive into Danny\'s dream where Joe kissed him at a party...we also dive into the dark underworld of the Karens.',
-      'artwork':
-          'https://www.figma.com/api/mcp/asset/90f55eb4-d1e2-4d43-93e6-d422dd17e6a2',
-    },
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +189,6 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
                     children: [
-                      // Episodes tab (active)
                       GestureDetector(
                         onTap: () {
                           setState(() {
@@ -165,7 +231,6 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                         ),
                       ),
                       const SizedBox(width: 24),
-                      // Downloads tab
                       GestureDetector(
                         onTap: () {
                           setState(() {
@@ -190,7 +255,6 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                         ),
                       ),
                       const SizedBox(width: 24),
-                      // Shows tab
                       GestureDetector(
                         onTap: () {
                           setState(() {
@@ -218,7 +282,6 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Yesterday label
                 if (_selectedTab == 'Episodes') ...[
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -231,19 +294,27 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 16                  ),
                 ],
-                // Episode list
                 if (_selectedTab == 'Episodes')
                   Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      itemCount: _episodes.length,
-                      itemBuilder: (context, index) {
-                        final episode = _episodes[index];
-                        return _buildEpisodeCard(episode);
-                      },
-                    ),
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _episodes.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'No episodes available',
+                                  style: TextStyle(color: Colors.grey[400]),
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                itemCount: _episodes.length,
+                                itemBuilder: (context, index) {
+                                  final episode = _episodes[index];
+                                  return _buildEpisodeCard(episode);
+                                },
+                              ),
                   )
                 else
                   Expanded(
@@ -260,7 +331,11 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
     );
   }
 
-  Widget _buildEpisodeCard(Map<String, dynamic> episode) {
+  Widget _buildEpisodeCard(PodcastEpisodeModel episode) {
+    String showName = 'Unknown Show';
+    if (episode.podcastId.isNotEmpty) {
+      showName = 'The Basement Yard';
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
@@ -271,11 +346,9 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title section
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Artwork
               Container(
                 width: 64,
                 height: 64,
@@ -285,9 +358,9 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(4),
-                  child: episode['artwork'] != null
+                  child: episode.artworkUrl != null
                       ? Image.network(
-                          episode['artwork']!,
+                          episode.artworkUrl!,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
                             return Container(color: Colors.grey[800]);
@@ -297,13 +370,12 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Title and show
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      episode['title'],
+                      episode.title,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -313,50 +385,49 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      episode['show'],
+                      showName,
                       style: TextStyle(color: Colors.grey[400], fontSize: 11),
                     ),
                   ],
                 ),
               ),
-              // More icon
               Icon(Icons.more_horiz, color: Colors.grey[400], size: 20),
             ],
           ),
           const SizedBox(height: 12),
-          // Description
-          Text(
-            episode['description'],
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 11,
-              height: 1.1,
+          if (episode.description != null)
+            Text(
+              episode.description!,
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 11,
+                height: 1.1,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
           const SizedBox(height: 12),
-          // Play button and metadata
           Row(
             children: [
-              // Play button
-              Container(
-                width: 31,
-                height: 31,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Color(0xFF282828),
-                  size: 15.2,
+              GestureDetector(
+                onTap: () => _playEpisode(episode),
+                child: Container(
+                  width: 31,
+                  height: 31,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Color(0xFF282828),
+                    size: 15.2,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
-              // Date and duration
               Text(
-                episode['date'],
+                _formatDate(episode.releaseDate),
                 style: TextStyle(
                   color: Colors.grey[400],
                   fontSize: 10,
@@ -376,7 +447,7 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                 ),
               ),
               Text(
-                episode['duration'],
+                episode.formattedDuration,
                 style: TextStyle(
                   color: Colors.grey[400],
                   fontSize: 10,
