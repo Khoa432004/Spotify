@@ -99,15 +99,15 @@ class DatabaseService {
       query = query.orderBy('popularity', descending: true).limit(limit);
 
       if (startAfter != null) {
-        final startAfterDoc =
-            await _firestore.collection(FirestoreCollections.songs).doc(startAfter).get();
+        final startAfterDoc = await _firestore
+            .collection(FirestoreCollections.songs)
+            .doc(startAfter)
+            .get();
         query = query.startAfterDocument(startAfterDoc);
       }
 
       final snapshot = await query.get();
-      return snapshot.docs
-          .map((doc) => SongModel.fromFirestore(doc))
-          .toList();
+      return snapshot.docs.map((doc) => SongModel.fromFirestore(doc)).toList();
     } catch (e) {
       print('Error getting songs: $e');
       return [];
@@ -153,9 +153,10 @@ class DatabaseService {
     return query
         .orderBy('popularity', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => SongModel.fromFirestore(doc))
-            .toList());
+        .map(
+          (snapshot) =>
+              snapshot.docs.map((doc) => SongModel.fromFirestore(doc)).toList(),
+        );
   }
 
   // ==================== ALBUM OPERATIONS ====================
@@ -198,9 +199,7 @@ class DatabaseService {
           .limit(limit)
           .get();
 
-      return snapshot.docs
-          .map((doc) => AlbumModel.fromFirestore(doc))
-          .toList();
+      return snapshot.docs.map((doc) => AlbumModel.fromFirestore(doc)).toList();
     } catch (e) {
       print('Error getting albums: $e');
       return [];
@@ -278,7 +277,10 @@ class DatabaseService {
   }
 
   /// Lấy songs của artist
-  Future<List<SongModel>> getArtistSongs(String artistId, {int limit = 20}) async {
+  Future<List<SongModel>> getArtistSongs(
+    String artistId, {
+    int limit = 20,
+  }) async {
     try {
       final snapshot = await _firestore
           .collection(FirestoreCollections.songs)
@@ -287,9 +289,7 @@ class DatabaseService {
           .limit(limit)
           .get();
 
-      return snapshot.docs
-          .map((doc) => SongModel.fromFirestore(doc))
-          .toList();
+      return snapshot.docs.map((doc) => SongModel.fromFirestore(doc)).toList();
     } catch (e) {
       print('Error getting artist songs: $e');
       return [];
@@ -367,7 +367,11 @@ class DatabaseService {
   }
 
   /// Thêm/xóa liked song
-  Future<void> toggleLikeSong(String userId, String songId, bool isLiked) async {
+  Future<void> toggleLikeSong(
+    String userId,
+    String songId,
+    bool isLiked,
+  ) async {
     try {
       final docRef = _firestore
           .collection(FirestoreCollections.userLikes)
@@ -399,13 +403,14 @@ class DatabaseService {
     int limit = 20,
   }) async {
     try {
-      Query query = _firestore.collection(FirestoreCollections.concerts)
+      Query query = _firestore
+          .collection(FirestoreCollections.concerts)
           .where('status', isEqualTo: 'upcoming')
           .limit(100);
 
       final snapshot = await query.get();
       var concerts = <ConcertModel>[];
-      
+
       for (var doc in snapshot.docs) {
         try {
           final concert = ConcertModel.fromFirestore(doc);
@@ -441,7 +446,8 @@ class DatabaseService {
       for (var doc in snapshot.docs) {
         try {
           final concert = ConcertModel.fromFirestore(doc);
-          final isInCity = concert.venue.city.toLowerCase() == city.toLowerCase();
+          final isInCity =
+              concert.venue.city.toLowerCase() == city.toLowerCase();
           if (isInCity) {
             filtered.add(concert);
           }
@@ -449,7 +455,7 @@ class DatabaseService {
           // Skip invalid concerts
         }
       }
-      
+
       filtered.sort((a, b) => a.dateTime.compareTo(b.dateTime));
       return filtered.take(20).toList();
     } catch (e) {
@@ -457,9 +463,7 @@ class DatabaseService {
     }
   }
 
-  Future<List<ConcertModel>> getRecommendedConcerts({
-    int limit = 20,
-  }) async {
+  Future<List<ConcertModel>> getRecommendedConcerts({int limit = 20}) async {
     try {
       final snapshot = await _firestore
           .collection(FirestoreCollections.concerts)
@@ -476,7 +480,7 @@ class DatabaseService {
           // Skip invalid concerts
         }
       }
-      
+
       concerts.sort((a, b) => a.dateTime.compareTo(b.dateTime));
       return concerts.take(limit).toList();
     } catch (e) {
@@ -496,7 +500,8 @@ class DatabaseService {
         'userId': userId,
         'type': NotificationType.concertReminder.value,
         'title': 'Concert Reminder: ${concert.artistName}',
-        'message': '${concert.title} is coming up on ${_formatConcertDate(concert.dateTime)} at ${concert.venue.name}',
+        'message':
+            '${concert.title} is coming up on ${_formatConcertDate(concert.dateTime)} at ${concert.venue.name}',
         'imageUrl': concert.imageUrl,
         'actionUrl': '/concerts/$concertId',
         'read': false,
@@ -507,7 +512,8 @@ class DatabaseService {
           'dateTime': Timestamp.fromDate(concert.dateTime),
         },
         'createdAt': FieldValue.serverTimestamp(),
-        if (scheduledFor != null) 'scheduledFor': Timestamp.fromDate(scheduledFor),
+        if (scheduledFor != null)
+          'scheduledFor': Timestamp.fromDate(scheduledFor),
       };
 
       await _firestore
@@ -520,7 +526,20 @@ class DatabaseService {
   }
 
   String _formatConcertDate(DateTime dateTime) {
-    final months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    final months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
     final weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     return '${weekdays[dateTime.weekday % 7]}, ${dateTime.day} ${months[dateTime.month - 1]}';
   }
@@ -633,4 +652,3 @@ class DatabaseService {
     }
   }
 }
-
