@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'database/firebase_setup.dart';
 import 'providers/music_player_provider.dart';
 import 'providers/home_provider.dart';
+import 'providers/search_provider.dart';
 import 'screens/home_screen.dart';
 
 void main() async {
@@ -25,6 +26,7 @@ void main() async {
         providers: [
           ChangeNotifierProvider(create: (_) => MusicPlayerProvider()),
           ChangeNotifierProvider(create: (_) => HomeProvider()),
+          ChangeNotifierProvider(create: (_) => SearchProvider()),
         ],
         child: const MyApp(),
       ),

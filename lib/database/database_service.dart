@@ -96,7 +96,12 @@ class DatabaseService {
         query = query.where('albumId', isEqualTo: albumId);
       }
 
-      query = query.orderBy('popularity', descending: true).limit(limit);
+      // Chỉ orderBy nếu KHÔNG filter by genre (để tránh cần composite index)
+      if (genre == null) {
+        query = query.orderBy('popularity', descending: true);
+      }
+
+      query = query.limit(limit);
 
       if (startAfter != null) {
         final startAfterDoc = await _firestore
@@ -114,25 +119,48 @@ class DatabaseService {
     }
   }
 
-  /// Tìm kiếm songs
+  /// Tìm kiếm songs (case-insensitive)
   Future<List<SongModel>> searchSongs(String query, {int limit = 20}) async {
     try {
+      final lowerQuery = query.toLowerCase().trim();
+      if (lowerQuery.isEmpty) return [];
+
+      // Search by tags (already lowercase)
       final snapshot = await _firestore
           .collection(FirestoreCollections.songs)
-          .where('tags', arrayContainsAny: query.toLowerCase().split(' '))
+          .where('tags', arrayContainsAny: lowerQuery.split(' '))
           .limit(limit)
           .get();
 
-      // Also search by title (case-insensitive)
-      final titleSnapshot = await _firestore
+      // Get all songs for title search (limited to reasonable amount)
+      final allSongsSnapshot = await _firestore
           .collection(FirestoreCollections.songs)
-          .where('title', isGreaterThanOrEqualTo: query)
-          .where('title', isLessThan: query + 'z')
-          .limit(limit)
+          .limit(100)
           .get();
 
-      final allDocs = {...snapshot.docs, ...titleSnapshot.docs};
-      return allDocs.map((doc) => SongModel.fromFirestore(doc)).toList();
+      // Client-side case-insensitive filtering
+      final titleMatches = allSongsSnapshot.docs
+          .where((doc) {
+            final song = SongModel.fromFirestore(doc);
+            return song.title.toLowerCase().contains(lowerQuery) ||
+                song.artistName.toLowerCase().contains(lowerQuery);
+          })
+          .take(limit)
+          .toList();
+
+      // Merge results và loại bỏ duplicates
+      final allDocs = <String, DocumentSnapshot>{};
+      for (var doc in snapshot.docs) {
+        allDocs[doc.id] = doc;
+      }
+      for (var doc in titleMatches) {
+        allDocs[doc.id] = doc;
+      }
+
+      return allDocs.values
+          .map((doc) => SongModel.fromFirestore(doc))
+          .take(limit)
+          .toList();
     } catch (e) {
       print('Error searching songs: $e');
       return [];
@@ -194,10 +222,14 @@ class DatabaseService {
         query = query.where('genres', arrayContains: genre);
       }
 
-      final snapshot = await query
-          .orderBy('releaseDate', descending: true)
-          .limit(limit)
-          .get();
+      // Chỉ orderBy nếu KHÔNG filter by genre (để tránh cần composite index)
+      if (genre == null) {
+        query = query.orderBy('releaseDate', descending: true);
+      }
+
+      query = query.limit(limit);
+
+      final snapshot = await query.get();
 
       return snapshot.docs.map((doc) => AlbumModel.fromFirestore(doc)).toList();
     } catch (e) {
@@ -649,6 +681,131 @@ class DatabaseService {
     } catch (e) {
       print('Error getting download URL: $e');
       rethrow;
+    }
+  }
+
+  // ==================== SEARCH OPERATIONS ====================
+
+  /// Tìm kiếm albums (case-insensitive)
+  Future<List<AlbumModel>> searchAlbums(String query, {int limit = 20}) async {
+    try {
+      final lowerQuery = query.toLowerCase().trim();
+      if (lowerQuery.isEmpty) return [];
+
+      // Get all albums (limited to reasonable amount)
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.albums)
+          .limit(100)
+          .get();
+
+      // Client-side case-insensitive filtering
+      final matches = snapshot.docs
+          .where((doc) {
+            final album = AlbumModel.fromFirestore(doc);
+            return album.title.toLowerCase().contains(lowerQuery) ||
+                album.artistName.toLowerCase().contains(lowerQuery);
+          })
+          .take(limit)
+          .toList();
+
+      return matches.map((doc) => AlbumModel.fromFirestore(doc)).toList();
+    } catch (e) {
+      print('Error searching albums: $e');
+      return [];
+    }
+  }
+
+  /// Tìm kiếm artists
+  Future<List<ArtistModel>> searchArtists(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      if (query.trim().isEmpty) return [];
+
+      // Tìm theo name
+      final nameSnapshot = await _firestore
+          .collection(FirestoreCollections.artists)
+          .where('name', isGreaterThanOrEqualTo: query)
+          .where('name', isLessThan: query + 'z')
+          .limit(limit)
+          .get();
+
+      return nameSnapshot.docs
+          .map((doc) => ArtistModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error searching artists: $e');
+      return [];
+    }
+  }
+
+  /// Tìm kiếm playlists (chỉ public playlists)
+  Future<List<PlaylistModel>> searchPlaylists(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      if (query.trim().isEmpty) return [];
+
+      final lowerQuery = query.toLowerCase();
+
+      // Tìm theo title và chỉ lấy public playlists
+      final titleSnapshot = await _firestore
+          .collection(FirestoreCollections.playlists)
+          .where('isPublic', isEqualTo: true)
+          .where('title', isGreaterThanOrEqualTo: query)
+          .where('title', isLessThan: query + 'z')
+          .limit(limit)
+          .get();
+
+      // Tìm theo tags
+      final tagsSnapshot = await _firestore
+          .collection(FirestoreCollections.playlists)
+          .where('isPublic', isEqualTo: true)
+          .where('tags', arrayContainsAny: lowerQuery.split(' '))
+          .limit(limit)
+          .get();
+
+      // Merge results và loại bỏ duplicates
+      final allDocs = <String, DocumentSnapshot>{};
+      for (var doc in titleSnapshot.docs) {
+        allDocs[doc.id] = doc;
+      }
+      for (var doc in tagsSnapshot.docs) {
+        allDocs[doc.id] = doc;
+      }
+
+      return allDocs.values
+          .map((doc) => PlaylistModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error searching playlists: $e');
+      return [];
+    }
+  }
+
+  /// Lấy danh sách tất cả các thể loại có sẵn
+  Future<List<String>> getAvailableGenres() async {
+    try {
+      // Lấy tất cả songs và aggregate genres
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.songs)
+          .limit(500) // Giới hạn để tối ưu performance
+          .get();
+
+      final genresSet = <String>{};
+      for (var doc in snapshot.docs) {
+        final song = SongModel.fromFirestore(doc);
+        genresSet.addAll(song.genres);
+      }
+
+      // Convert set thành list và sort
+      final genresList = genresSet.toList()..sort();
+      return genresList;
+    } catch (e) {
+      print('Error getting available genres: $e');
+      return [];
     }
   }
 }

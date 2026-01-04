@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/search_provider.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
 
-/// Màn hình Search Results - Hiển thị recent searches và keyboard
+/// Màn hình Search Results - Hiển thị kết quả tìm kiếm và lịch sử
 class SearchResultsScreen extends StatefulWidget {
   const SearchResultsScreen({super.key});
 
@@ -15,75 +17,32 @@ class SearchResultsScreen extends StatefulWidget {
 class _SearchResultsScreenState extends State<SearchResultsScreen> {
   final TextEditingController _searchController = TextEditingController();
 
-  final List<Map<String, dynamic>> _recentSearches = [
-    {
-      'type': 'artist',
-      'title': 'Tycho',
-      'subtitle': 'Artist',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/a47c2ff4-b3cf-440f-8b5b-8cb424b2bf5c',
-    },
-    {
-      'type': 'song',
-      'title': 'Heart in the Pipes (KAUF Remix)',
-      'subtitle': 'Song • Tony Castles, Kauf',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/0dd4dc44-1c83-4972-b6fa-aca4c81ca552',
-    },
-    {
-      'type': 'song',
-      'title': 'Slow Poison',
-      'subtitle': 'Song • The Bravery',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/0ae7ef33-8c99-4f9c-84f3-69b04305c89f',
-    },
-    {
-      'type': 'song',
-      'title': 'Things I Can\'t Change',
-      'subtitle': 'Song • The Story So Far',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/ffcad60c-15fc-4e83-8795-3111cb53cc82',
-    },
-    {
-      'type': 'song',
-      'title': 'Body',
-      'subtitle': 'Song • Loud Luxury',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/4d27235a-5492-4c85-b781-36bdf7de6424',
-    },
-    {
-      'type': 'song',
-      'title': 'Sunflower (ft. Swae Lee)',
-      'subtitle': 'Song • Post Malone, Swae Lee',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/0308a125-16de-41ac-b0c5-355541985321',
-    },
-    {
-      'type': 'song',
-      'title': 'You',
-      'subtitle': 'Song • Galantis',
-      'imageUrl':
-          'https://www.figma.com/api/mcp/asset/74d55079-4c93-497c-860a-99d305e644d9',
-    },
-  ];
-
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
-  void _removeSearchItem(int index) {
-    setState(() {
-      _recentSearches.removeAt(index);
-    });
+  void _performSearch(String query, SearchProvider searchProvider) {
+    if (query.trim().isNotEmpty) {
+      searchProvider.searchAll(query);
+    } else {
+      searchProvider.clearResults();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: Column(
+    return Consumer<SearchProvider>(
+      builder: (context, searchProvider, child) {
+        final hasQuery = _searchController.text.isNotEmpty;
+        final showResults = hasQuery && searchProvider.hasResults;
+        final showRecentSearches =
+            !hasQuery && searchProvider.recentSearches.isNotEmpty;
+
+        return Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          body: Column(
             children: [
               // Header
               Container(
@@ -108,7 +67,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                             child: Row(
                               children: [
                                 const SizedBox(width: 22),
-                                Icon(
+                                const Icon(
                                   Icons.search,
                                   color: Colors.white,
                                   size: 15,
@@ -117,6 +76,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                                 Expanded(
                                   child: TextField(
                                     controller: _searchController,
+                                    autofocus: true,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 14.5,
@@ -135,6 +95,9 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                                         vertical: 6,
                                       ),
                                     ),
+                                    onChanged: (value) {
+                                      _performSearch(value, searchProvider);
+                                    },
                                   ),
                                 ),
                               ],
@@ -155,7 +118,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                         const SizedBox(width: 8),
                         // Camera icon
                         IconButton(
-                          icon: Icon(
+                          icon: const Icon(
                             Icons.camera_alt_outlined,
                             color: Colors.white,
                             size: 23,
@@ -167,7 +130,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                   ),
                 ),
               ),
-              // Content with mic button overlay
+              // Content
               Expanded(
                 child: Stack(
                   children: [
@@ -178,26 +141,149 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const SizedBox(height: 16),
-                            // Recent searches title
-                            const Text(
-                              'Recent searches',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+
+                            // Loading state
+                            if (searchProvider.isLoading)
+                              const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(32.0),
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFF1DB954),
+                                  ),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            // Recent searches list
-                            ...List.generate(_recentSearches.length, (index) {
-                              final item = _recentSearches[index];
-                              if (item['type'] == 'artist') {
-                                return _buildArtistItem(index);
-                              } else if (item['type'] == 'song') {
-                                return _buildSongItem(index);
-                              }
-                              return const SizedBox.shrink();
-                            }),
+
+                            // Recent searches
+                            if (showRecentSearches) ...[
+                              const Text(
+                                'Recent searches',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              ...List.generate(
+                                searchProvider.recentSearches.length,
+                                (index) {
+                                  final item =
+                                      searchProvider.recentSearches[index];
+                                  if (item['type'] == 'artist') {
+                                    return _buildArtistItem(
+                                      item,
+                                      index,
+                                      searchProvider,
+                                    );
+                                  } else {
+                                    return _buildSongItem(
+                                      item,
+                                      index,
+                                      searchProvider,
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
+
+                            // Search results
+                            if (showResults && !searchProvider.isLoading) ...[
+                              // Songs section
+                              if (searchProvider.songs.isNotEmpty) ...[
+                                const Text(
+                                  'Songs',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ...searchProvider.songs.take(5).map((song) {
+                                  return _buildSongResultItem(
+                                    song,
+                                    searchProvider,
+                                  );
+                                }),
+                                const SizedBox(height: 24),
+                              ],
+
+                              // Artists section
+                              if (searchProvider.artists.isNotEmpty) ...[
+                                const Text(
+                                  'Artists',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ...searchProvider.artists.take(3).map((artist) {
+                                  return _buildArtistResultItem(
+                                    artist,
+                                    searchProvider,
+                                  );
+                                }),
+                                const SizedBox(height: 24),
+                              ],
+
+                              // Albums section
+                              if (searchProvider.albums.isNotEmpty) ...[
+                                const Text(
+                                  'Albums',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ...searchProvider.albums.take(3).map((album) {
+                                  return _buildAlbumResultItem(
+                                    album,
+                                    searchProvider,
+                                  );
+                                }),
+                                const SizedBox(height: 24),
+                              ],
+
+                              // Playlists section
+                              if (searchProvider.playlists.isNotEmpty) ...[
+                                const Text(
+                                  'Playlists',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ...searchProvider.playlists.take(3).map((
+                                  playlist,
+                                ) {
+                                  return _buildPlaylistResultItem(playlist);
+                                }),
+                              ],
+                            ],
+
+                            // Empty state
+                            if (hasQuery &&
+                                !searchProvider.hasResults &&
+                                !searchProvider.isLoading)
+                              const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(32.0),
+                                  child: Text(
+                                    'No results found',
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
                             const SizedBox(height: 120), // Space for mic button
                           ],
                         ),
@@ -228,13 +314,18 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                 ),
               ),
             ],
-      ),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
+          ),
+          bottomNavigationBar: _buildBottomNavigationBar(context),
+        );
+      },
     );
   }
 
-  Widget _buildArtistItem(int index) {
-    final item = _recentSearches[index];
+  Widget _buildArtistItem(
+    Map<String, dynamic> item,
+    int index,
+    SearchProvider searchProvider,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: GestureDetector(
@@ -291,7 +382,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             IconButton(
               icon: Icon(Icons.close, color: Colors.grey[400], size: 15),
               onPressed: () {
-                _removeSearchItem(index);
+                searchProvider.removeFromRecentSearches(index);
               },
             ),
           ],
@@ -300,28 +391,31 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
     );
   }
 
-  Widget _buildSongItem(int index) {
-    final item = _recentSearches[index];
+  Widget _buildSongItem(
+    Map<String, dynamic> item,
+    int index,
+    SearchProvider searchProvider,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: GestureDetector(
         onTap: () {
-          // Navigate to song detail or album
-          final artistName = item['subtitle']
-              .toString()
-              .replaceAll('Song • ', '')
-              .split(',')[0]
-              .trim();
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AlbumDetailScreen(
-                albumName: item['title']!,
-                artistName: artistName,
-                albumArt: item['imageUrl'],
+          // Navigate based on type
+          if (item['type'] == 'album') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => AlbumDetailScreen(
+                  albumName: item['title']!,
+                  artistName: item['subtitle']!
+                      .replaceAll('Album • ', '')
+                      .split(',')[0]
+                      .trim(),
+                  albumArt: item['imageUrl'],
+                ),
               ),
-            ),
-          );
+            );
+          }
         },
         child: Row(
           children: [
@@ -372,8 +466,248 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             IconButton(
               icon: Icon(Icons.close, color: Colors.grey[400], size: 15),
               onPressed: () {
-                _removeSearchItem(index);
+                searchProvider.removeFromRecentSearches(index);
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSongResultItem(song, SearchProvider searchProvider) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: GestureDetector(
+        onTap: () {
+          searchProvider.addToRecentSearches(
+            searchProvider.createRecentSearchFromSong(song),
+          );
+          // Play song or navigate to player
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: song.artworkUrl != null
+                    ? Image.network(
+                        song.artworkUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(color: Colors.grey[800]!);
+                        },
+                      )
+                    : Container(color: Colors.grey[800]),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    song.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    song.artistName,
+                    style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildArtistResultItem(artist, SearchProvider searchProvider) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: GestureDetector(
+        onTap: () {
+          searchProvider.addToRecentSearches(
+            searchProvider.createRecentSearchFromArtist(artist),
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ArtistDetailScreen(artistName: artist.name),
+            ),
+          );
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: Colors.grey,
+                shape: BoxShape.circle,
+              ),
+              child: ClipOval(
+                child: artist.imageUrl != null
+                    ? Image.network(
+                        artist.imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(color: Colors.grey[800]!);
+                        },
+                      )
+                    : Container(color: Colors.grey[800]),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    artist.name,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Artist',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlbumResultItem(album, SearchProvider searchProvider) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: GestureDetector(
+        onTap: () {
+          searchProvider.addToRecentSearches(
+            searchProvider.createRecentSearchFromAlbum(album),
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AlbumDetailScreen(
+                albumName: album.title,
+                artistName: album.artistName,
+                albumArt: album.artworkUrl,
+              ),
+            ),
+          );
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: album.artworkUrl != null
+                    ? Image.network(
+                        album.artworkUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(color: Colors.grey[800]!);
+                        },
+                      )
+                    : Container(color: Colors.grey[800]),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    album.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Album • ${album.artistName}',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaylistResultItem(playlist) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: GestureDetector(
+        onTap: () {
+          // Navigate to playlist detail
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: playlist.artworkUrl != null
+                    ? Image.network(
+                        playlist.artworkUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(color: Colors.grey[800]!);
+                        },
+                      )
+                    : Container(color: Colors.grey[800]),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    playlist.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Playlist',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
