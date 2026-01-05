@@ -891,5 +891,456 @@ class SeedData {
       rethrow;
     }
   }
+
+  /// Xóa tất cả albums và clean up related data (giữ lại songs)
+  Future<void> deleteAllAlbums() async {
+    print('🗑️ Đang xóa tất cả albums (giữ lại songs)...');
+    
+    try {
+      // Lấy tất cả albums
+      final albumsSnapshot = await _firestore
+          .collection(FirestoreCollections.albums)
+          .get();
+      
+      if (albumsSnapshot.docs.isEmpty) {
+        print('ℹ️ Không có albums nào để xóa.');
+        return;
+      }
+      
+      // Lấy artistIds cần update (chỉ xóa albumIds, giữ lại songIds)
+      final artistIdsToUpdate = <String>{};
+      
+      for (var albumDoc in albumsSnapshot.docs) {
+        final albumData = albumDoc.data();
+        final artistId = albumData['artistId'] as String?;
+        
+        if (artistId != null) {
+          artistIdsToUpdate.add(artistId);
+        }
+      }
+      
+      // Xóa albums (không xóa songs)
+      int deletedAlbums = 0;
+      for (var doc in albumsSnapshot.docs) {
+        await doc.reference.delete();
+        deletedAlbums++;
+      }
+      
+      // Clean up artists (chỉ xóa albumIds, giữ lại songIds)
+      print('  📝 Đang clean up artists (chỉ xóa albumIds)...');
+      for (var artistId in artistIdsToUpdate) {
+        try {
+          // Lấy songIds hiện tại của artist
+          final artistDoc = await _firestore
+              .collection(FirestoreCollections.artists)
+              .doc(artistId)
+              .get();
+          
+          if (artistDoc.exists) {
+            final currentSongIds = List<String>.from(artistDoc.data()?['songIds'] ?? []);
+            // Chỉ xóa albumIds, giữ lại songIds
+            await _firestore.collection(FirestoreCollections.artists).doc(artistId).update({
+              'albumIds': [],
+              // Giữ lại songIds hiện tại
+              'songIds': currentSongIds,
+            });
+          }
+        } catch (e) {
+          print('  ⚠️ Lỗi khi clean up artist $artistId: $e');
+        }
+      }
+      
+      print('✅ Đã xóa $deletedAlbums albums (songs được giữ lại)');
+    } catch (e) {
+      print('❌ Lỗi khi xóa albums: $e');
+      rethrow;
+    }
+  }
+
+  /// Seed data mới từ file new_songs format
+  Future<void> seedNewAlbumsAndSongs() async {
+    print('🌱 Bắt đầu seed data mới từ new_songs...');
+    
+    try {
+      // Xóa data cũ
+      await deleteAllAlbums();
+      
+      // Data structure từ file new_songs
+      final albumsData = [
+        {
+          'title': 'L2K - The Album',
+          'artistName': 'Low G',
+          'artworkUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+          'genre': 'Hip-Hop',
+          'genres': ['Hip-Hop', 'Rap', 'Vietnamese'],
+          'songs': [
+            {
+              'title': 'Đừng để tiền rơi',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20%C4%90%E1%BB%ABng%20%C4%90%E1%BB%83%20Ti%E1%BB%81n%20R%C6%A1i%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5Bu4Pk8-1Hxiw%5D.mp3?alt=media&token=e12d0ea6-c156-447b-a62b-cda85cbf66ef',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Tràng Thi',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Tr%C3%A0ng%20Thi%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5By8tLAOwFUZ4%5D.mp3?alt=media&token=8d596712-4152-49d5-b737-c2b71cbcec1f',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Siêu sao',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Si%C3%AAu%20Sao%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5BgHSMZzc-iEE%5D.mp3?alt=media&token=a605ffa0-8203-43b6-aaae-c0b882985e58',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Peace N\' Love',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Peace%20N%E2%80%99%20Love%20(ft.%20M%E1%BB%B9%20Anh)%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5Bn_KakQwWUoc%5D.mp3?alt=media&token=e7c84610-5db3-4dca-b386-b8e96926c5bc',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Nét',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Peace%20N%E2%80%99%20Love%20(ft.%20M%E1%BB%B9%20Anh)%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5Bn_KakQwWUoc%5D.mp3?alt=media&token=e7c84610-5db3-4dca-b386-b8e96926c5bc',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Nhiều hơn',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Nhi%E1%BB%81u%20H%C6%A1n%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5BzylC5TE9jrk%5D.mp3?alt=media&token=8c3ddc1d-14ed-44d6-bae2-155eda8c0c3b',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Love Game',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Love%20Game%20(ft.%20tlinh)%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5BbMmIAaMcWsU%5D.mp3?alt=media&token=771e912c-afff-40cc-9aeb-d694310c79d6',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Long',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Long%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5B78HyHkjbkb4%5D.mp3?alt=media&token=371d659e-1d5b-49e4-a36e-c33adc45cfe9',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Giải Cứu Mỹ Nhân',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Gi%E1%BA%A3i%20C%E1%BB%A9u%20M%E1%BB%B9%20Nh%C3%A2n%20(ft.%20Ho%C3%A0ng%20T%C3%B4n)%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5BAWLp157GHZA%5D.mp3?alt=media&token=17cd6705-01ae-4fb3-955d-fae947716bd8',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'Celeb Date',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20Celeb%20Date%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5BFu7Kr7hNh1s%5D.mp3?alt=media&token=66b786c8-18af-4517-9c5f-56f7ff397711',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+            {
+              'title': 'In Love',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FLow%20G%20_%20In%20Love%20(ft.%20JustaTee)%20_%20%E2%80%98L2K%E2%80%99%20The%20Album%20%5BT7ksmtaVeOk%5D.mp3?alt=media&token=be58b4b1-3248-4530-b43b-091926d966d7',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FL2K.png?alt=media&token=eda996e1-7a6d-402d-be1c-baffa35d8598',
+            },
+          ],
+        },
+        {
+          'title': 'Từng Ngày Như Mãi Mãi',
+          'artistName': 'buitruonglinh',
+          'artworkUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+          'genre': 'Pop',
+          'genres': ['Pop', 'Ballad', 'Vietnamese'],
+          'songs': [
+            {
+              'title': 'Đi Cùng Anh',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2F%C4%90i%20C%C3%B9ng%20Anh%20_%20buitruonglinh%20(ft.%2052Hz)%20%5BVO3uefb_rBc%5D.mp3?alt=media&token=70524f23-c8c0-4117-830a-6682c7e84a69',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+            {
+              'title': 'Vì Điều Gì',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FV%C3%AC%20%C4%90i%E1%BB%81u%20G%C3%AC%20_%20buitruonglinh%20(ft.%20Dangrangto)%20%5B_rEtH_Ir0nE%5D.mp3?alt=media&token=c8dcf9a4-19be-4734-8f53-59048a8a2d60',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+            {
+              'title': 'Từng Ngày Như Mãi Mãi',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i%20_%20buitruonglinh%20%5Bp3FnuJnm8iQ%5D.mp3?alt=media&token=876a252d-a7a4-4752-b29f-6d8700152d89',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+            {
+              'title': 'Nàng Công Chúa Nhỏ (interlude)',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FN%C3%A0ng%20C%C3%B4ng%20Ch%C3%BAa%20Nh%E1%BB%8F%20_%20buitruonglinh%20(interlude)%20%5B3CSNJ5_TCbY%5D.mp3?alt=media&token=924cd261-b0e9-4f73-851e-3c70d87d26f5',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+            {
+              'title': 'Giờ Thì',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FGi%E1%BB%9D%20Th%C3%AC%20_%20buitruonglinh%20%5BItRExComFJ4%5D.mp3?alt=media&token=b06d35d7-503d-4cc5-a34c-825943c518b5',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+            {
+              'title': 'Em Ơi Là Em',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FEm%20%C6%A0i%20L%C3%A0%20Em%20_%20buitruonglinh%20(ft.%20Ki%E1%BB%81u%20Chi%2C%20BMZ)%20%5BKOlX-v0q-8A%5D.mp3?alt=media&token=c9536cef-163f-40c5-9b5f-21900f361d58',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+            {
+              'title': 'Dù Em Từng Yêu',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FD%C3%B9%20Em%20T%E1%BB%ABng%20Y%C3%AAu%20_%20buitruonglinh%20%5BKIIgt2VY-u0%5D.mp3?alt=media&token=e1e1f008-3378-4c5f-9f47-52534ec3a23c',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+            {
+              'title': 'Chỉ Là Không Có Nhau',
+              'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FCh%E1%BB%89%20L%C3%A0%20Kh%C3%B4ng%20C%C3%B3%20Nhau%20_%20buitruonglinh%20%5BFvWPSA2mt2s%5D.mp3?alt=media&token=df897624-1931-4f3b-818a-668a8bfa03de',
+              'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FT%E1%BB%ABng%20Ng%C3%A0y%20Nh%C6%B0%20M%C3%A3i%20M%C3%A3i.png?alt=media&token=ec524b7a-fa3a-4e0a-aef9-3486dc29906a',
+            },
+          ],
+        },
+      ];
+      
+      // Standalone songs
+      final standaloneSongs = [
+        {
+          'title': '2GOILAYS',
+          'artistName': 'DMT, Dangrangto, TeuYungBoy',
+          'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2F2GOILAYS%20-%20DMT%2C%20Dangrangto%2C%20TeuYungBoy%20(Prod.%20DONAL)%20_%20Official%20MV%20%5BILsA2VFJ150%5D.mp3?alt=media&token=296a5e3d-f328-4ae7-83dd-1da46d8d0853',
+          'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2F2GOILAYS.png?alt=media&token=6496aa99-e952-42e9-9b20-77c0c93a27bf',
+          'genre': 'Hip-Hop',
+          'genres': ['Hip-Hop', 'Rap', 'Vietnamese'],
+        },
+        {
+          'title': 'Buồn Hay Vui',
+          'artistName': 'VSOUL x MCK x Obito x Ronboogz x Boyzed',
+          'songUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/song_urls%2FBU%E1%BB%92N%20HAY%20VUI%20-%20VSOUL%20x%20MCK%20x%20Obito%20x%20Ronboogz%20x%20Boyzed%20(Official%20Audio)%20%5BJV0dEgbX5yk%5D.mp3?alt=media&token=4b386eb7-21ad-4fa8-bf0c-99bd82588af3',
+          'imgUrl': 'https://firebasestorage.googleapis.com/v0/b/spotify-78b1f.firebasestorage.app/o/img_url%2FBU%E1%BB%92N%20HAY%20VUI.png?alt=media&token=fd881953-c3e3-4595-a729-0d06b8b4faaf',
+          'genre': 'Hip-Hop',
+          'genres': ['Hip-Hop', 'Rap', 'Vietnamese'],
+        },
+      ];
+      
+      // Tạo hoặc lấy artists
+      final Map<String, String> artistNameToId = {};
+      
+      // Collect unique artist names
+      final Set<String> uniqueArtistNames = {};
+      for (var albumData in albumsData) {
+        uniqueArtistNames.add(albumData['artistName'] as String);
+      }
+      for (var songData in standaloneSongs) {
+        uniqueArtistNames.add(songData['artistName'] as String);
+      }
+      
+      // Tạo artists
+      print('📝 Đang tạo ${uniqueArtistNames.length} artists...');
+      for (var artistName in uniqueArtistNames) {
+        // Kiểm tra xem artist đã tồn tại chưa
+        final existingArtists = await _firestore
+            .collection(FirestoreCollections.artists)
+            .where('name', isEqualTo: artistName)
+            .limit(1)
+            .get();
+        
+        String artistId;
+        if (existingArtists.docs.isNotEmpty) {
+          artistId = existingArtists.docs.first.id;
+          // Giữ lại songIds hiện tại, chỉ clear albumIds
+          final currentSongIds = List<String>.from(existingArtists.docs.first.data()['songIds'] ?? []);
+          await existingArtists.docs.first.reference.update({
+            'albumIds': [],
+            // Giữ lại songIds hiện tại
+            'songIds': currentSongIds,
+          });
+        } else {
+          // Tạo artist mới
+          final artistRef = await _firestore
+              .collection(FirestoreCollections.artists)
+              .add({
+            'name': artistName,
+            'imageUrl': null,
+            'bio': null,
+            'genres': artistName == 'Low G' 
+                ? ['Hip-Hop', 'Rap', 'Vietnamese']
+                : artistName == 'buitruonglinh'
+                    ? ['Pop', 'Ballad', 'Vietnamese']
+                    : ['Hip-Hop', 'Rap', 'Vietnamese'],
+            'monthlyListeners': 0,
+            'followerCount': 0,
+            'albumIds': [],
+            'songIds': [],
+            'verified': true,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          artistId = artistRef.id;
+        }
+        
+        artistNameToId[artistName] = artistId;
+        print('  ✅ Artist: $artistName ($artistId)');
+      }
+      
+      // Tạo albums và songs
+      final Map<String, List<String>> artistAlbumIds = {};
+      final Map<String, List<String>> artistSongIds = {};
+      
+      for (var artistName in uniqueArtistNames) {
+        artistAlbumIds[artistName] = [];
+        artistSongIds[artistName] = [];
+      }
+      
+      print('📝 Đang tạo albums và songs...');
+      for (var albumData in albumsData) {
+        final albumTitle = albumData['title'] as String;
+        final artistName = albumData['artistName'] as String;
+        final artistId = artistNameToId[artistName]!;
+        final artworkUrl = albumData['artworkUrl'] as String;
+        final genre = albumData['genre'] as String;
+        final genres = List<String>.from(albumData['genres'] as List);
+        final songsData = List<Map<String, dynamic>>.from(albumData['songs'] as List);
+        
+        // Tạo album
+        final albumRef = await _firestore
+            .collection(FirestoreCollections.albums)
+            .add({
+          'title': albumTitle,
+          'artistId': artistId,
+          'artistName': artistName,
+          'artworkUrl': artworkUrl,
+          'releaseDate': FieldValue.serverTimestamp(),
+          'genre': genre,
+          'genres': genres,
+          'totalTracks': songsData.length,
+          'duration': 0, // Sẽ tính sau nếu cần
+          'songIds': [],
+          'playCount': 0,
+          'likeCount': 0,
+          'description': null,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        final albumId = albumRef.id;
+        artistAlbumIds[artistName]!.add(albumId);
+        print('  ✅ Album: $albumTitle ($albumId)');
+        
+        // Tạo songs cho album
+        final List<String> albumSongIds = [];
+        int trackNumber = 1;
+        
+        for (var songData in songsData) {
+          final songTitle = songData['title'] as String;
+          final songUrl = songData['songUrl'] as String;
+          final imgUrl = songData['imgUrl'] as String;
+          
+          // Skip nếu không có songUrl
+          if (songUrl.isEmpty) {
+            print('  ⚠️ Bỏ qua song "$songTitle": không có songUrl');
+            continue;
+          }
+          
+          final songRef = await _firestore
+              .collection(FirestoreCollections.songs)
+              .add({
+            'title': songTitle,
+            'artistId': artistId,
+            'artistName': artistName,
+            'albumId': albumId,
+            'albumName': albumTitle,
+            'duration': 180, // Default 3 minutes, có thể update sau
+            'genre': genre,
+            'genres': genres,
+            'audioUrl': songUrl,
+            'artworkUrl': imgUrl.trim(),
+            'releaseDate': FieldValue.serverTimestamp(),
+            'playCount': 0,
+            'likeCount': 0,
+            'isExplicit': false,
+            'trackNumber': trackNumber,
+            'popularity': 50,
+            'tags': [
+              songTitle.toLowerCase(),
+              albumTitle.toLowerCase(),
+              artistName.toLowerCase(),
+              ...genres.map((g) => g.toLowerCase()),
+            ],
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          
+          albumSongIds.add(songRef.id);
+          artistSongIds[artistName]!.add(songRef.id);
+          trackNumber++;
+        }
+        
+        // Update album với songIds
+        await albumRef.update({
+          'songIds': albumSongIds,
+          'totalTracks': albumSongIds.length,
+        });
+        
+        print('    ✅ Đã tạo ${albumSongIds.length} songs cho album: $albumTitle');
+      }
+      
+      // Tạo standalone songs (songs không thuộc album)
+      print('📝 Đang tạo standalone songs...');
+      for (var songData in standaloneSongs) {
+        final songTitle = songData['title'] as String;
+        final artistName = songData['artistName'] as String;
+        final artistId = artistNameToId[artistName]!;
+        final songUrl = songData['songUrl'] as String;
+        final imgUrl = songData['imgUrl'] as String;
+        final genre = songData['genre'] as String;
+        final genres = List<String>.from(songData['genres'] as List);
+        
+        final songRef = await _firestore
+            .collection(FirestoreCollections.songs)
+            .add({
+          'title': songTitle,
+          'artistId': artistId,
+          'artistName': artistName,
+          'albumId': null,
+          'albumName': null,
+          'duration': 180, // Default 3 minutes
+          'genre': genre,
+          'genres': genres,
+          'audioUrl': songUrl,
+          'artworkUrl': imgUrl,
+          'releaseDate': FieldValue.serverTimestamp(),
+          'playCount': 0,
+          'likeCount': 0,
+          'isExplicit': false,
+          'trackNumber': null,
+          'popularity': 50,
+          'tags': [
+            songTitle.toLowerCase(),
+            artistName.toLowerCase(),
+            ...genres.map((g) => g.toLowerCase()),
+          ],
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        artistSongIds[artistName]!.add(songRef.id);
+        print('  ✅ Song: $songTitle - $artistName');
+      }
+      
+      // Update artists với albumIds và songIds (merge với data hiện có)
+      print('📝 Đang update artists...');
+      for (var entry in artistNameToId.entries) {
+        final artistName = entry.key;
+        final artistId = entry.value;
+        final newAlbumIds = artistAlbumIds[artistName] ?? [];
+        final newSongIds = artistSongIds[artistName] ?? [];
+        
+        // Lấy songIds hiện tại của artist
+        final artistDoc = await _firestore
+            .collection(FirestoreCollections.artists)
+            .doc(artistId)
+            .get();
+        
+        final currentSongIds = artistDoc.exists 
+            ? List<String>.from(artistDoc.data()?['songIds'] ?? [])
+            : <String>[];
+        
+        // Merge songIds: combine current + new (remove duplicates)
+        final allSongIds = <String>{...currentSongIds, ...newSongIds}.toList();
+        
+        await _firestore
+            .collection(FirestoreCollections.artists)
+            .doc(artistId)
+            .update({
+          'albumIds': newAlbumIds,
+          'songIds': allSongIds,
+        });
+        
+        print('  ✅ Updated artist: $artistName (${newAlbumIds.length} albums mới, ${newSongIds.length} songs mới, tổng ${allSongIds.length} songs)');
+      }
+      
+      print('✅ Hoàn tất seed data mới!');
+    } catch (e, stackTrace) {
+      print('❌ Lỗi khi seed data mới: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
 }
 

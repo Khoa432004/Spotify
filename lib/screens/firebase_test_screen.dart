@@ -257,70 +257,30 @@ class _FirebaseTestScreenState extends State<FirebaseTestScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // Seed Data Button
+                      // Seed Albums Mới Button
                       ElevatedButton.icon(
                         onPressed: () async {
                           setState(() {
                             _isLoading = true;
-                            _statusMessage = 'Đang seed data...';
-                          });
-                          try {
-                            final seedData = SeedData();
-                            await seedData.seedAll();
-                            setState(() {
-                              _statusMessage = '✅ Đã seed data thành công!';
-                              _isLoading = false;
-                            });
-                            _addResult('✅ Seed data hoàn tất!');
-                          } catch (e) {
-                            setState(() {
-                              _statusMessage = '❌ Lỗi seed data: $e';
-                              _isLoading = false;
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.add_circle),
-                        label: const Text('Seed Data vào Firestore'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1DB954),
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Reset & Seed Songs Mới Button
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          setState(() {
-                            _isLoading = true;
-                            _statusMessage = 'Đang reset và seed songs mới...';
+                            _statusMessage = 'Đang seed albums và songs mới (giữ lại songs cũ)...';
                           });
                           
                           try {
                             final seedData = SeedData();
-                            final songUrls = CustomSongData.songs;
-                            
-                            if (songUrls.isEmpty) {
-                              setState(() {
-                                _statusMessage = '⚠️ Chưa có songs data.';
-                                _isLoading = false;
-                              });
-                              return;
-                            }
-                            
-                            await seedData.resetAndSeedSongs(songUrls);
+                            await seedData.seedNewAlbumsAndSongs();
                             
                             setState(() {
-                              _statusMessage = '✅ Đã reset và seed ${songUrls.length} songs mới!';
+                              _statusMessage = '✅ Đã seed albums và songs mới thành công!';
                               _isLoading = false;
                             });
                             
-                            _addResult('✅ Đã reset và seed ${songUrls.length} songs mới!');
+                            _addResult('✅ Đã seed albums và songs mới!');
                             
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('✅ Đã seed ${songUrls.length} songs mới!'),
+                              const SnackBar(
+                                content: Text('✅ Đã seed albums và songs mới (songs cũ được giữ lại)!'),
                                 backgroundColor: Colors.green,
-                                duration: const Duration(seconds: 3),
+                                duration: Duration(seconds: 3),
                               ),
                             );
                           } catch (e) {
@@ -328,13 +288,13 @@ class _FirebaseTestScreenState extends State<FirebaseTestScreen> {
                               _statusMessage = '❌ Lỗi: $e';
                               _isLoading = false;
                             });
-                            _addResult('❌ Lỗi reset songs: $e');
+                            _addResult('❌ Lỗi seed albums mới: $e');
                           }
                         },
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Reset & Seed Songs Mới (5 bài)'),
+                        icon: const Icon(Icons.album),
+                        label: const Text('Seed Albums Mới (Giữ Songs Cũ)'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                          backgroundColor: const Color(0xFF1DB954),
                           foregroundColor: Colors.white,
                         ),
                       ),
@@ -575,25 +535,25 @@ class _FirebaseTestScreenState extends State<FirebaseTestScreen> {
                                   onPressed: () async {
                                     setState(() {
                                       _isLoading = true;
-                                      _statusMessage = 'Đang seed data...';
+                                      _statusMessage = 'Đang seed albums và songs mới (giữ lại songs cũ)...';
                                     });
                                     try {
                                       final seedData = SeedData();
-                                      await seedData.seedAll();
+                                      await seedData.seedNewAlbumsAndSongs();
                                       setState(() {
-                                        _statusMessage = '✅ Đã seed data thành công!';
+                                        _statusMessage = '✅ Đã seed albums và songs mới thành công!';
                                         _isLoading = false;
                                       });
                                       _loadSongs(); // Reload songs after seeding
                                     } catch (e) {
                                       setState(() {
-                                        _statusMessage = '❌ Lỗi seed data: $e';
+                                        _statusMessage = '❌ Lỗi seed albums mới: $e';
                                         _isLoading = false;
                                       });
                                     }
                                   },
-                                  icon: const Icon(Icons.add_circle),
-                                  label: const Text('Seed Data'),
+                                  icon: const Icon(Icons.album),
+                                  label: const Text('Seed Albums Mới (Giữ Songs Cũ)'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF1DB954),
                                     foregroundColor: Colors.white,
