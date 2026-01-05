@@ -490,7 +490,7 @@ class DatabaseService {
           print('⚠️ Skip invalid concert document: $e');
         }
       }
-      
+
       print('📡 Sau khi filter theo city "$city": ${filtered.length} concerts');
       filtered.sort((a, b) => a.dateTime.compareTo(b.dateTime));
       final result = filtered.take(limit).toList();
@@ -522,7 +522,7 @@ class DatabaseService {
           print('⚠️ Skip invalid concert document: $e');
         }
       }
-      
+
       print('📡 Đã parse ${concerts.length} concerts thành công');
       concerts.sort((a, b) => a.dateTime.compareTo(b.dateTime));
       final result = concerts.take(limit).toList();
@@ -736,11 +736,12 @@ class DatabaseService {
 
       if (doc.exists) {
         downloads = UserDownloadsModel.fromFirestore(doc);
-        
+
         // Kiểm tra xem episode đã được download chưa
-        final existingIndex = downloads.downloadedPodcastEpisodes
-            .indexWhere((e) => e.episodeId == episodeId);
-        
+        final existingIndex = downloads.downloadedPodcastEpisodes.indexWhere(
+          (e) => e.episodeId == episodeId,
+        );
+
         if (existingIndex != -1) {
           // Episode đã tồn tại, không cần thêm lại
           return;
@@ -812,7 +813,9 @@ class DatabaseService {
 
       final updatedDownloads = downloads.copyWith(
         downloadedPodcastEpisodes: updatedEpisodes,
-        storageUsed: (downloads.storageUsed - fileSize).clamp(0, double.infinity).toInt(),
+        storageUsed: (downloads.storageUsed - fileSize)
+            .clamp(0, double.infinity)
+            .toInt(),
         updatedAt: DateTime.now(),
       );
 
@@ -825,15 +828,19 @@ class DatabaseService {
   }
 
   /// Kiểm tra xem episode đã được download chưa (trong Firestore)
-  Future<bool> isPodcastEpisodeDownloaded(String userId, String episodeId) async {
+  Future<bool> isPodcastEpisodeDownloaded(
+    String userId,
+    String episodeId,
+  ) async {
     try {
       final downloads = await getUserDownloads(userId);
       if (downloads == null) {
         return false;
       }
 
-      return downloads.downloadedPodcastEpisodes
-          .any((e) => e.episodeId == episodeId);
+      return downloads.downloadedPodcastEpisodes.any(
+        (e) => e.episodeId == episodeId,
+      );
     } catch (e) {
       print('Error checking podcast episode download status: $e');
       return false;
