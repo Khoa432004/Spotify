@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/search_provider.dart';
+import '../providers/music_player_provider.dart';
 import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
+import 'player_screen.dart';
+import 'album_detail_screen.dart';
 
 /// Màn hình Music Genre - Hiển thị chi tiết thể loại nhạc
 class MusicGenreScreen extends StatefulWidget {
@@ -26,6 +29,24 @@ class _MusicGenreScreenState extends State<MusicGenreScreen> {
       final searchProvider = context.read<SearchProvider>();
       searchProvider.searchByGenre(widget.genreName);
     });
+  }
+
+  Future<void> _playSong(BuildContext context, dynamic song, List<dynamic> queue, int index) async {
+    final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+    try {
+      await player.playSong(song, queue: queue.cast(), initialIndex: index);
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const PlayerScreen()),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể phát nhạc: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -189,85 +210,90 @@ class _MusicGenreScreenState extends State<MusicGenreScreen> {
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              ...searchProvider.songs.take(10).map((song) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 12.0),
-                                  child: Row(
-                                    children: [
-                                      // Artwork
-                                      Container(
-                                        width: 48,
-                                        height: 48,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey[800],
-                                          borderRadius: BorderRadius.circular(
-                                            4,
+                              ...searchProvider.songs.take(10).toList().asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final song = entry.value;
+                                return GestureDetector(
+                                  onTap: () => _playSong(context, song, searchProvider.songs, index),
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 12.0),
+                                    child: Row(
+                                      children: [
+                                        // Artwork
+                                        Container(
+                                          width: 48,
+                                          height: 48,
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey[800],
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            child: song.artworkUrl != null
+                                                ? Image.network(
+                                                    song.artworkUrl!,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder:
+                                                        (
+                                                          context,
+                                                          error,
+                                                          stackTrace,
+                                                        ) {
+                                                          return Container(
+                                                            color:
+                                                                Colors.grey[800]!,
+                                                          );
+                                                        },
+                                                  )
+                                                : Container(
+                                                    color: Colors.grey[800],
+                                                  ),
                                           ),
                                         ),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            4,
-                                          ),
-                                          child: song.artworkUrl != null
-                                              ? Image.network(
-                                                  song.artworkUrl!,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder:
-                                                      (
-                                                        context,
-                                                        error,
-                                                        stackTrace,
-                                                      ) {
-                                                        return Container(
-                                                          color:
-                                                              Colors.grey[800]!,
-                                                        );
-                                                      },
-                                                )
-                                              : Container(
-                                                  color: Colors.grey[800],
+                                        const SizedBox(width: 12),
+                                        // Song info
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                song.title,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 14,
                                                 ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      // Song info
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              song.title,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 14,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              song.artistName,
-                                              style: TextStyle(
-                                                color: Colors.grey[400],
-                                                fontSize: 11,
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                song.artistName,
+                                                style: TextStyle(
+                                                  color: Colors.grey[400],
+                                                  fontSize: 11,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                      // More button
-                                      IconButton(
-                                        icon: Icon(
-                                          Icons.more_vert,
-                                          color: Colors.grey[400],
-                                          size: 20,
+                                        // More button
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.more_vert,
+                                            color: Colors.grey[400],
+                                            size: 20,
+                                          ),
+                                          onPressed: () {},
                                         ),
-                                        onPressed: () {},
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 );
                               }),
@@ -308,70 +334,85 @@ class _MusicGenreScreenState extends State<MusicGenreScreen> {
                                     : searchProvider.albums.length,
                                 itemBuilder: (context, index) {
                                   final album = searchProvider.albums[index];
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Artwork
-                                      Expanded(
-                                        child: Container(
-                                          width: double.infinity,
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey[800],
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                            child: album.artworkUrl != null
-                                                ? Image.network(
-                                                    album.artworkUrl!,
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder:
-                                                        (
-                                                          context,
-                                                          error,
-                                                          stackTrace,
-                                                        ) {
-                                                          return Container(
-                                                            color: Colors
-                                                                .grey[800]!,
-                                                          );
-                                                        },
-                                                  )
-                                                : Container(
-                                                    color: Colors.grey[800],
-                                                  ),
+                                  return GestureDetector(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => AlbumDetailScreen(
+                                            albumName: album.title,
+                                            artistName: album.artistName,
+                                            albumArt: album.artworkUrl,
+                                            albumId: album.id,
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      // Album name
-                                      Text(
-                                        album.title,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w500,
+                                      );
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // Artwork
+                                        Expanded(
+                                          child: Container(
+                                            width: double.infinity,
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey[800],
+                                              borderRadius: BorderRadius.circular(
+                                                4,
+                                              ),
+                                            ),
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(
+                                                4,
+                                              ),
+                                              child: album.artworkUrl != null
+                                                  ? Image.network(
+                                                      album.artworkUrl!,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder:
+                                                          (
+                                                            context,
+                                                            error,
+                                                            stackTrace,
+                                                          ) {
+                                                            return Container(
+                                                              color: Colors
+                                                                  .grey[800]!,
+                                                            );
+                                                          },
+                                                    )
+                                                  : Container(
+                                                      color: Colors.grey[800],
+                                                    ),
+                                            ),
+                                          ),
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      // Artist name
-                                      Text(
-                                        album.artistName,
-                                        style: TextStyle(
-                                          color: Colors.grey[400],
-                                          fontSize: 11,
+                                        const SizedBox(height: 8),
+                                        // Album name
+                                        Text(
+                                          album.title,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
+                                        const SizedBox(height: 4),
+                                        // Artist name
+                                        Text(
+                                          album.artistName,
+                                          style: TextStyle(
+                                            color: Colors.grey[400],
+                                            fontSize: 11,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
                                   );
                                 },
                               ),

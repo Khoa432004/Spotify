@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/search_provider.dart';
+import '../providers/music_player_provider.dart';
 import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
+import 'player_screen.dart';
 
 /// Màn hình Search Results - Hiển thị kết quả tìm kiếm và lịch sử
 class SearchResultsScreen extends StatefulWidget {
@@ -486,11 +488,26 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: GestureDetector(
-        onTap: () {
+        onTap: () async {
           searchProvider.addToRecentSearches(
             searchProvider.createRecentSearchFromSong(song),
           );
-          // Play song or navigate to player
+          // Play song
+          final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+          try {
+            await player.playSong(song, queue: searchProvider.songs, initialIndex: searchProvider.songs.indexOf(song));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const PlayerScreen()),
+            );
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Không thể phát nhạc: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         },
         child: Row(
           children: [
