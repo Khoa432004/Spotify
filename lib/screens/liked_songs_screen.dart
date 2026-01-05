@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
 import 'player_screen.dart';
+import '../services/favorite_service.dart';
+import '../database/models/song_model.dart';
+import '../providers/music_player_provider.dart';
 
 /// Màn hình Liked Songs
 class LikedSongsScreen extends StatefulWidget {
@@ -15,29 +19,13 @@ class LikedSongsScreen extends StatefulWidget {
 
 class _LikedSongsScreenState extends State<LikedSongsScreen> {
   bool _isDownloading = true;
+  Stream<List<SongModel>>? _favoritesStream;
 
-  final List<Map<String, String>> _songs = [
-    {
-      'title': 'Dancin (feat. Luvli) - Krono Remix',
-      'artist': 'Aaron Smith, Krono, Luvli',
-      'album': 'Dancin (feat. Lu...',
-    },
-    {'title': 'Gimme Sympathy', 'artist': 'Metric', 'album': 'Fantasies'},
-    {'title': 'Gold Guns Girls', 'artist': 'Metric', 'album': 'Fantasies'},
-    {'title': 'The Bones', 'artist': 'Maren Morris', 'album': 'GIRL'},
-    {'title': 'New Theory', 'artist': 'Washed Out', 'album': 'Life of Leisure'},
-    {
-      'title': 'Sun Was High (So Was I)',
-      'artist': 'Small Black',
-      'album': 'Photojournalist b/w Sun Was...',
-    },
-    {'title': 'Youth', 'artist': 'Beach Fossils', 'album': 'Beach Fossils'},
-    {
-      'title': 'What a Pleasure',
-      'artist': 'Beach Fossils',
-      'album': 'What a Pleasure',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _favoritesStream = FavoriteService.favoritesStream();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -209,88 +197,122 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
 
                 const SizedBox(height: 16),
 
-                // Song list
+                // Song list (from Firestore favorites)
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    itemCount: _songs.length,
-                    itemBuilder: (context, index) {
-                      final song = _songs[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12.0),
-                        child: Row(
-                          children: [
-                            // Artwork
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[800],
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-
-                            const SizedBox(width: 12),
-
-                            // Song info
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    song['title']!,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                  child: StreamBuilder<List<SongModel>>(
+                    stream: _favoritesStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final favs = snapshot.data ?? [];
+                      if (favs.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'Bạn chưa có bài hát yêu thích nào',
+                            style: TextStyle(color: Colors.grey[400]),
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        itemCount: favs.length,
+                        itemBuilder: (context, index) {
+                          final song = favs[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child: Row(
+                              children: [
+                                // Artwork
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[800],
+                                    borderRadius: BorderRadius.circular(2),
+                                    image: song.artworkUrl != null
+                                        ? DecorationImage(
+                                            image: NetworkImage(song.artworkUrl!),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Row(
+                                ),
+
+                                const SizedBox(width: 12),
+
+                                // Song info
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Icon(
-                                        Icons.download,
-                                        color: Color(0xFF57B560),
-                                        size: 12.5,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          '${song['artist']} • ${song['album']}',
-                                          style: TextStyle(
-                                            color: Colors.grey[400],
-                                            fontSize: 11,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                      Text(
+                                        song.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.person,
+                                            color: Color(0xFF57B560),
+                                            size: 12.5,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              '${song.artistName} • ${song.albumName ?? ''}',
+                                              style: TextStyle(
+                                                color: Colors.grey[400],
+                                                fontSize: 11,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ],
-                              ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                // Favorite icon (can remove)
+                                IconButton(
+                                  onPressed: () async {
+                                    await FavoriteService.removeFavorite(song.id);
+                                  },
+                                  icon: const Icon(
+                                    Icons.favorite,
+                                    color: Color(0xFF57B560),
+                                    size: 18,
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                // Play icon
+                                IconButton(
+                                  onPressed: () {
+                                    final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+                                    player.playSong(song);
+                                  },
+                                  icon: const Icon(
+                                    Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ],
                             ),
-
-                            const SizedBox(width: 8),
-
-                            // Favorite icon
-                            const Icon(
-                              Icons.favorite,
-                              color: Color(0xFF57B560),
-                              size: 16,
-                            ),
-
-                            const SizedBox(width: 16),
-
-                            // More icon
-                            Icon(
-                              Icons.more_vert,
-                              color: Colors.grey[400],
-                              size: 16,
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       );
                     },
                   ),

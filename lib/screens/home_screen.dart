@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../database/firebase_setup.dart';
 import '../providers/home_provider.dart';
 import '../widgets/playlist_card.dart';
 import '../widgets/album_card.dart';
@@ -75,9 +76,19 @@ class HomeScreen extends StatelessWidget {
                                 );
                               },
                             ),
-                            const Icon(
-                              Icons.settings_outlined,
-                              color: Colors.white,
+                            IconButton(
+                              icon: const Icon(
+                                Icons.logout,
+                                color: Colors.white,
+                              ),
+                              onPressed: () async {
+                                // Sign out
+                                try {
+                                  await FirebaseSetup.auth.signOut();
+                                } catch (e) {
+                                  // ignore
+                                }
+                              },
                             ),
                           ],
                         ),

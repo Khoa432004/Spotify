@@ -7,6 +7,7 @@ import 'providers/music_player_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/search_provider.dart';
 import 'screens/home_screen.dart';
+import 'screens/auth_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,7 +52,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF121212),
         primaryColor: const Color(0xFF1DB954),
       ),
-      home: const HomeScreen(),
+      home: const AuthGate(),
     );
   }
 }

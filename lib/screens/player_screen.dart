@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_player_provider.dart';
 import '../services/music_player_service.dart';
+import '../database/models/song_model.dart';
+import '../services/favorite_service.dart';
 
 /// Màn hình Player - Phát nhạc với controls (theo Figma design)
 class PlayerScreen extends StatefulWidget {
@@ -13,6 +15,7 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   bool _isLiked = false;
+  String? _lastSongId;
 
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes;
@@ -86,8 +89,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     // Album artwork
                     _buildArtwork(song.artworkUrl),
                     const SizedBox(height: 32),
-                    // Song info
-                    _buildSongInfo(song.title, song.artistName),
+                                _buildSongInfo(song.title, song.artistName, song),
                     const SizedBox(height: 24),
                     // Timeline
                     _buildTimeline(position, duration, progress, player),
@@ -213,7 +215,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildSongInfo(String title, String artistName) {
+  Widget _buildSongInfo(String title, String artistName, SongModel song) {
     return Row(
       children: [
         Expanded(
@@ -247,19 +249,53 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
         // Like button
         GestureDetector(
-          onTap: () {
+          onTap: () async {
+            final songId = song.id;
             setState(() {
               _isLiked = !_isLiked;
             });
+            try {
+              if (_isLiked) {
+                await FavoriteService.addFavorite(song);
+              } else {
+                await FavoriteService.removeFavorite(songId);
+              }
+            } catch (e) {
+              // Revert on error
+              setState(() {
+                _isLiked = !_isLiked;
+              });
+            }
           },
           child: Icon(
             _isLiked ? Icons.favorite : Icons.favorite_border,
-            color: _isLiked ? const Color(0xFF57B560) : const Color(0xFF57B560),
+            color: _isLiked ? const Color(0xFF57B560) : const Color(0xFFBFBFBF),
             size: 24,
           ),
         ),
       ],
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ensure like state follows currentSong
+    final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+    final song = player.currentSong;
+    if (song != null && song.id != _lastSongId) {
+      _lastSongId = song.id;
+      _loadIsLiked(song.id);
+    }
+  }
+
+  Future<void> _loadIsLiked(String songId) async {
+    try {
+      final fav = await FavoriteService.isFavorite(songId);
+      if (mounted) setState(() => _isLiked = fav);
+    } catch (e) {
+      // ignore
+    }
   }
 
   Widget _buildTimeline(
