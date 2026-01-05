@@ -223,14 +223,11 @@ class DatabaseService {
         query = query.where('genres', arrayContains: genre);
       }
 
-      // Chỉ orderBy nếu KHÔNG filter by genre (để tránh cần composite index)
-      if (genre == null) {
-        query = query.orderBy('releaseDate', descending: true);
-      }
-
       query = query.limit(limit);
 
       final snapshot = await query.get();
+      
+      print('📀 Fetched ${snapshot.docs.length} albums from Firestore');
 
       return snapshot.docs.map((doc) => AlbumModel.fromFirestore(doc)).toList();
     } catch (e) {

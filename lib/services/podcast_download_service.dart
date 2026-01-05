@@ -4,10 +4,12 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import '../database/models/podcast_model.dart';
 
-// Conditional imports - use stubs for web, real implementations for mobile/desktop
-import 'dart:io' if (dart.library.html) 'podcast_download_service_stub.dart' show File, Directory;
-import 'package:path_provider/path_provider.dart' if (dart.library.html) 'podcast_download_service_stub.dart';
-import 'dart:html' as html if (dart.library.html) 'dart:html';
+// Conditional imports for file system (mobile/desktop only)
+import 'dart:io' if (dart.library.html) 'podcast_download_stub.dart' show File, Directory;
+import 'package:path_provider/path_provider.dart' if (dart.library.html) 'podcast_download_stub.dart';
+
+// Conditional import for html (web only)
+import 'podcast_download_stub.dart' if (dart.library.html) 'dart:html' as html;
 
 /// Service để download và quản lý podcast episodes offline
 class PodcastDownloadService {
@@ -45,7 +47,6 @@ class PodcastDownloadService {
     if (kIsWeb) {
       // Trên web, check localStorage thay vì file system
       try {
-        // ignore: undefined_prefixed_name
         final storage = html.window.localStorage;
         return storage.containsKey('podcast_download_$episodeId');
       } catch (e) {
@@ -80,7 +81,6 @@ class PodcastDownloadService {
       if (isDownloaded) {
         print('📦 Episode ${episode.id} đã được download');
         if (kIsWeb) {
-          // ignore: undefined_prefixed_name
           final storage = html.window.localStorage;
           return storage['podcast_download_${episode.id}'] ?? episode.audioUrl;
         }
@@ -92,18 +92,15 @@ class PodcastDownloadService {
         print('🌐 Trên web: Sử dụng browser download');
         try {
           // Lưu metadata vào localStorage
-          // ignore: undefined_prefixed_name
           final storage = html.window.localStorage;
           storage['podcast_download_${episode.id}'] = episode.audioUrl;
           storage['podcast_download_time_${episode.id}'] = DateTime.now().toIso8601String();
           
           // Trigger browser download
-          // ignore: undefined_prefixed_name
           final anchor = html.AnchorElement(href: episode.audioUrl)
             ..download = '${episode.title.replaceAll(RegExp(r'[^\w\s-]'), '_')}.mp3'
             ..target = '_blank';
           
-          // ignore: undefined_prefixed_name
           html.document.body?.append(anchor);
           anchor.click();
           anchor.remove();
@@ -113,7 +110,6 @@ class PodcastDownloadService {
         } catch (e) {
           print('❌ Lỗi khi trigger browser download: $e');
           // Fallback: chỉ lưu URL để phát sau
-          // ignore: undefined_prefixed_name
           final storage = html.window.localStorage;
           storage['podcast_download_${episode.id}'] = episode.audioUrl;
           return episode.audioUrl;
@@ -207,7 +203,6 @@ class PodcastDownloadService {
   Future<bool> deleteEpisode(String episodeId) async {
     if (kIsWeb) {
       try {
-        // ignore: undefined_prefixed_name
         final storage = html.window.localStorage;
         storage.remove('podcast_download_$episodeId');
         storage.remove('podcast_download_time_$episodeId');
@@ -265,7 +260,6 @@ class PodcastDownloadService {
   Future<List<String>> getDownloadedEpisodeIds() async {
     if (kIsWeb) {
       try {
-        // ignore: undefined_prefixed_name
         final storage = html.window.localStorage;
         final episodeIds = <String>[];
         
@@ -310,7 +304,6 @@ class PodcastDownloadService {
   Future<void> clearAllDownloads() async {
     if (kIsWeb) {
       try {
-        // ignore: undefined_prefixed_name
         final storage = html.window.localStorage;
         final keysToRemove = <String>[];
         

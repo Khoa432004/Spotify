@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -116,7 +117,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const MiniPlayer(),
+          _buildBottomNavigationBar(context),
+        ],
+      ),
       body: Stack(
         children: [
           // Gradient fade background

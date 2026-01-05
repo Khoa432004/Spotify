@@ -54,11 +54,16 @@ class HomeProvider extends ChangeNotifier {
       // history in DatabaseService public API yet (model exists but service methods might be limited),
       // we will simulate this by fetching some albums.
       _recentlyPlayedAlbums = await _databaseService.getAlbums(limit: 5);
+      print('🏠 Recently played albums: ${_recentlyPlayedAlbums.length}');
+      for (var album in _recentlyPlayedAlbums) {
+        print('  📀 ${album.title} - artworkUrl: ${album.artworkUrl}');
+      }
 
       // Fetch Made for You
       // Logic: Recommendation engine. For now, fetch random or popular albums
       // We can offset the previous fetch or fetch by different genre
       _madeForYouAlbums = await _databaseService.getAlbums(limit: 5);
+      print('🎵 Made for you albums: ${_madeForYouAlbums.length}');
       // In a real app we would filter defaults.
     } catch (e) {
       print("Error loading home data: $e");

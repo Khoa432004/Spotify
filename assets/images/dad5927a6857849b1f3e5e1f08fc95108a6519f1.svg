@@ -1,0 +1,7 @@
+<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display: block;" viewBox="0 0 366 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Bar">
+<path id="Bar_2" d="M0 7C0 5.89543 0.89543 5 2 5H364C365.105 5 366 5.89543 366 7C366 8.10457 365.105 9 364 9H2C0.895435 9 0 8.10457 0 7Z" fill="var(--fill-0, #474747)"/>
+<path id="Active" d="M0 7C0 5.89543 0.895431 5 2 5H10C11.1046 5 12 5.89543 12 7C12 8.10457 11.1046 9 10 9H2C0.895431 9 0 8.10457 0 7Z" fill="var(--fill-0, white)"/>
+<circle id="Ellipse 3" cx="8.5" cy="6.5" r="6.5" fill="var(--fill-0, white)"/>
+</g>
+</svg>

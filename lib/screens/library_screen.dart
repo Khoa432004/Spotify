@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/mini_player.dart';
 import 'liked_songs_screen.dart';
 import 'albums_list_screen.dart';
 import 'artists_list_screen.dart';
@@ -212,7 +213,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const MiniPlayer(),
+          _buildBottomNavigationBar(),
+        ],
+      ),
     );
   }
 

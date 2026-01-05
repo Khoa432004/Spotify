@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -42,7 +43,13 @@ class _LikedSongsScreenState extends State<LikedSongsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const MiniPlayer(),
+          _buildBottomNavigationBar(),
+        ],
+      ),
       body: Stack(
         children: [
           // Gradient fade background

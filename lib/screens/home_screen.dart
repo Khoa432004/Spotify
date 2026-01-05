@@ -4,32 +4,20 @@ import '../providers/home_provider.dart';
 import '../widgets/playlist_card.dart';
 import '../widgets/album_card.dart';
 import '../widgets/section_header.dart';
+import '../widgets/mini_player.dart';
 import 'concerts_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
 import 'firebase_test_screen.dart';
+import 'album_detail_screen.dart';
 
 /// Màn hình Home - Hiển thị các playlist, album gần đây và đề xuất
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  // URLs của các hình ảnh từ Figma
-  static const String imgArtwork1 =
-      "https://www.figma.com/api/mcp/asset/27e633bd-dcfd-4618-9353-1c1f708630fd";
-  static const String imgArtwork2 =
-      "https://www.figma.com/api/mcp/asset/40f03944-2e21-4e6a-b4fd-22d9f52ceed9";
-  static const String imgArtwork3 =
-      "https://www.figma.com/api/mcp/asset/dee2f9e3-2cdd-4964-ac62-93f5b708b13f";
-  static const String imgReplace1 =
-      "https://www.figma.com/api/mcp/asset/8fc854b1-2d3a-4b66-9245-0f08b291a416";
-  static const String imgImage1 =
-      "https://www.figma.com/api/mcp/asset/46a19ee9-04e8-4358-8c0d-56a6809c3855";
-  static const String imgImage2 =
-      "https://www.figma.com/api/mcp/asset/df8a5e8f-b0d0-4cea-9c8a-70239122cfd4";
-  static const String imgImage3 =
-      "https://www.figma.com/api/mcp/asset/3c74428e-23c3-4d4b-9758-55b3591f8b2d";
-  static const String imgImage4 =
-      "https://www.figma.com/api/mcp/asset/fc6b37e9-6047-487a-b8d1-b22ebf9a8b4f";
+  // Placeholder image khi không có artwork
+  static const String defaultArtwork =
+      "https://i.scdn.co/image/ab67616d0000b273bb54dde68cd23e2a268ae0f5";
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +110,7 @@ class HomeScreen extends StatelessWidget {
                               homeProvider.quickAccessPlaylists[index];
                           return PlaylistCard(
                             title: playlist.title,
-                            imageUrl: playlist.artworkUrl ?? imgArtwork1,
+                            imageUrl: playlist.artworkUrl ?? defaultArtwork,
                           );
                         },
                       ),
@@ -147,7 +135,22 @@ class HomeScreen extends StatelessWidget {
                             padding: const EdgeInsets.only(right: 16.0),
                             child: AlbumCard(
                               title: album.title,
-                              imageUrl: album.artworkUrl ?? imgArtwork1,
+                              imageUrl: album.artworkUrl ?? defaultArtwork,
+                              albumId: album.id,
+                              artistName: album.artistName,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => AlbumDetailScreen(
+                                      albumName: album.title,
+                                      artistName: album.artistName,
+                                      albumArt: album.artworkUrl,
+                                      albumId: album.id,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           );
                         },
@@ -171,7 +174,23 @@ class HomeScreen extends StatelessWidget {
                           return Padding(
                             padding: const EdgeInsets.only(right: 16.0),
                             child: LargeAlbumCard(
-                              imageUrl: album.artworkUrl ?? imgArtwork1,
+                              imageUrl: album.artworkUrl ?? defaultArtwork,
+                              albumId: album.id,
+                              title: album.title,
+                              artistName: album.artistName,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => AlbumDetailScreen(
+                                      albumName: album.title,
+                                      artistName: album.artistName,
+                                      albumArt: album.artworkUrl,
+                                      albumId: album.id,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           );
                         },
@@ -186,7 +205,13 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const MiniPlayer(),
+          _buildBottomNavigationBar(context),
+        ],
+      ),
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/search_provider.dart';
+import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -59,7 +60,13 @@ class _MusicGenreScreenState extends State<MusicGenreScreen> {
           },
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const MiniPlayer(),
+          _buildBottomNavigationBar(context),
+        ],
+      ),
       body: Consumer<SearchProvider>(
         builder: (context, searchProvider, child) {
           return Stack(

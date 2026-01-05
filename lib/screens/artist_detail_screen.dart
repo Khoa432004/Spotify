@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -44,7 +45,13 @@ class ArtistDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const MiniPlayer(),
+          _buildBottomNavigationBar(context),
+        ],
+      ),
       body: Stack(
         children: [
           // Header with artist image

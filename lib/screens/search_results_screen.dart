@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/search_provider.dart';
+import '../widgets/mini_player.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
 import 'artist_detail_screen.dart';
@@ -315,7 +316,13 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
               ),
             ],
           ),
-          bottomNavigationBar: _buildBottomNavigationBar(context),
+          bottomNavigationBar: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const MiniPlayer(),
+              _buildBottomNavigationBar(context),
+            ],
+          ),
         );
       },
     );
