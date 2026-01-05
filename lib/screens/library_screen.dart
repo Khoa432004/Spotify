@@ -4,6 +4,7 @@ import 'liked_songs_screen.dart';
 import 'albums_list_screen.dart';
 import 'artists_list_screen.dart';
 import 'podcasts_screen.dart';
+import 'downloads_screen.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 
@@ -19,7 +20,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String _selectedFilter = 'Playlists';
 
   // Danh sách các bộ lọc
-  final List<String> _filters = ['Playlists', 'Artists', 'Albums', 'Podcasts'];
+  final List<String> _filters = ['Playlists', 'Artists', 'Albums', 'Podcasts', 'Downloads'];
 
   // Dữ liệu mẫu cho playlists
   final List<Map<String, String>> _playlists = [
@@ -143,6 +144,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             context,
                             MaterialPageRoute(
                               builder: (context) => const PodcastsScreen(),
+                            ),
+                          );
+                        } else if (filter == 'Downloads') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const DownloadsScreen(),
                             ),
                           );
                         }

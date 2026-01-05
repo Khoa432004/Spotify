@@ -8,6 +8,8 @@ import 'player_screen.dart';
 import '../database/firebase_setup.dart';
 import '../database/models/song_model.dart';
 import '../providers/music_player_provider.dart';
+import '../services/song_download_service.dart';
+import '../widgets/download_progress_dialog.dart';
 
 /// Màn hình chi tiết Album
 class AlbumDetailScreen extends StatefulWidget {
@@ -31,11 +33,33 @@ class AlbumDetailScreen extends StatefulWidget {
 class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   List<SongModel>? _songs;
   bool _isLoading = false;
+  final SongDownloadService _downloadService = SongDownloadService();
+  Set<String> _downloadingSongs = {}; // Track songs đang download
+  Set<String> _downloadedSongs = {}; // Track songs đã download
+  bool _isDownloadingAlbum = false;
 
   @override
   void initState() {
     super.initState();
     _loadSongs();
+    _checkDownloadedSongs();
+  }
+
+  Future<void> _checkDownloadedSongs() async {
+    if (_songs == null) return;
+    
+    try {
+      for (var song in _songs!) {
+        final isDownloaded = await _downloadService.isSongDownloaded(song.id);
+        if (isDownloaded) {
+          setState(() {
+            _downloadedSongs.add(song.id);
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Lỗi khi kiểm tra downloaded songs: $e');
+    }
   }
 
   Future<void> _loadSongs() async {
@@ -52,6 +76,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         _songs = songs;
         _isLoading = false;
       });
+      // Kiểm tra downloaded songs sau khi load
+      _checkDownloadedSongs();
     } catch (e) {
       print('❌ Lỗi khi load songs: $e');
       setState(() {
@@ -64,10 +90,38 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final player = Provider.of<MusicPlayerProvider>(context, listen: false);
 
     try {
+      // Kiểm tra xem đã download chưa, nếu có thì dùng local file
+      String audioUrl = song.audioUrl;
+      final isDownloaded = await _downloadService.isSongDownloaded(song.id);
+      if (isDownloaded) {
+        final localPath = await _downloadService.getLocalFilePath(song.id);
+        audioUrl = localPath;
+        print('📦 Phát từ local file: $localPath');
+      }
+
+      if (audioUrl.isEmpty) {
+        throw Exception('Song không có audio URL');
+      }
+
+      // Tạo song với local path nếu đã download
+      final songToPlay = song.copyWith(audioUrl: audioUrl);
+
       // Nếu có queue (songs), phát với queue
       if (_songs != null && _songs!.isNotEmpty) {
-        final index = _songs!.indexWhere((s) => s.id == song.id);
-        await player.playSong(song, queue: _songs, initialIndex: index);
+        // Cập nhật audioUrl cho tất cả songs trong queue nếu đã download
+        final updatedSongs = _songs!.map((s) async {
+          final isSDownloaded = await _downloadService.isSongDownloaded(s.id);
+          if (isSDownloaded) {
+            final localPath = await _downloadService.getLocalFilePath(s.id);
+            return s.copyWith(audioUrl: localPath);
+          }
+          return s;
+        }).toList();
+        
+        // Wait for all futures
+        final resolvedSongs = await Future.wait(updatedSongs);
+        final index = resolvedSongs.indexWhere((s) => s.id == song.id);
+        await player.playSong(songToPlay, queue: resolvedSongs, initialIndex: index);
 
         // Nếu shuffle được yêu cầu, bật shuffle
         if (shuffle && !player.shuffleMode) {
@@ -75,7 +129,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         }
       } else {
         // Nếu không có queue, chỉ phát bài này
-        await player.playSong(song);
+        await player.playSong(songToPlay);
       }
 
       // Navigate to player screen
@@ -98,6 +152,286 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       }
       print('❌ Lỗi khi phát nhạc: $e');
     }
+  }
+
+  Future<void> _handleDownloadSong(SongModel song) async {
+    // Nếu đã download, xóa nó
+    if (_downloadedSongs.contains(song.id)) {
+      await _deleteSong(song);
+      return;
+    }
+
+    // Nếu đang download, không làm gì
+    if (_downloadingSongs.contains(song.id)) {
+      return;
+    }
+
+    setState(() {
+      _downloadingSongs.add(song.id);
+    });
+
+    // Hiển thị progress dialog
+    await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => DownloadProgressDialog(
+        title: 'Đang tải xuống',
+        subtitle: song.title,
+        downloadTask: (onProgress) async {
+          // Download song với progress callback
+          final localPath = await _downloadService.downloadSong(
+            song,
+            onProgress: onProgress,
+          );
+          final fileSize = await _downloadService.getFileSize(song.id);
+
+          // Lưu vào Firestore nếu có user
+          final userId = FirebaseSetup.currentUserId ?? 'guest_user';
+          if (userId != 'guest_user') {
+            try {
+              await FirebaseSetup.databaseService.addSongDownload(
+                userId,
+                song.id,
+                localPath,
+                fileSize,
+              );
+            } catch (e) {
+              print('⚠️ Không thể lưu vào Firestore: $e');
+            }
+          }
+        },
+        onSuccess: () {
+          setState(() {
+            _downloadingSongs.remove(song.id);
+            _downloadedSongs.add(song.id);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Đã tải xuống thành công'),
+              backgroundColor: Color(0xFF1DB954),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
+        onError: (error) {
+          setState(() {
+            _downloadingSongs.remove(song.id);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Lỗi khi tải xuống: $error'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _deleteSong(SongModel song) async {
+    try {
+      // Xóa file local
+      final deleted = await _downloadService.deleteSong(song.id);
+
+      if (deleted) {
+        // Xóa khỏi Firestore nếu có user
+        final userId = FirebaseSetup.currentUserId ?? 'guest_user';
+        if (userId != 'guest_user') {
+          try {
+            final fileSize = await _downloadService.getFileSize(song.id);
+            await FirebaseSetup.databaseService.removeSongDownload(
+              userId,
+              song.id,
+              fileSize,
+            );
+          } catch (e) {
+            print('⚠️ Không thể xóa khỏi Firestore: $e');
+          }
+        }
+
+        setState(() {
+          _downloadedSongs.remove(song.id);
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🗑️ Đã xóa file đã tải'),
+              backgroundColor: Colors.grey,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi khi xóa: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleDownloadAlbum() async {
+    if (_songs == null || _songs!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không có bài hát nào để tải xuống'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Kiểm tra xem album đã được download chưa
+    final userId = FirebaseSetup.currentUserId ?? 'guest_user';
+    bool isAlbumDownloaded = false;
+    if (userId != 'guest_user' && widget.albumId != null) {
+      isAlbumDownloaded = await FirebaseSetup.databaseService.isAlbumDownloaded(
+        userId,
+        widget.albumId!,
+      );
+    }
+
+    if (isAlbumDownloaded) {
+      // Xóa album
+      if (widget.albumId != null && userId != 'guest_user') {
+        await FirebaseSetup.databaseService.removeAlbumDownload(
+          userId,
+          widget.albumId!,
+        );
+      }
+      // Xóa tất cả songs
+      for (var song in _songs!) {
+        if (_downloadedSongs.contains(song.id)) {
+          await _deleteSong(song);
+        }
+      }
+      return;
+    }
+
+    setState(() {
+      _isDownloadingAlbum = true;
+    });
+
+    // Hiển thị progress dialog cho album download
+    final songsToDownload = _songs!
+        .where((s) => !_downloadedSongs.contains(s.id))
+        .toList();
+
+    if (songsToDownload.isEmpty) {
+      setState(() {
+        _isDownloadingAlbum = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tất cả bài hát đã được tải xuống'),
+          backgroundColor: Colors.grey,
+        ),
+      );
+      return;
+    }
+
+    await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => DownloadProgressDialog(
+        title: 'Đang tải xuống album',
+        subtitle: '${songsToDownload.length} bài hát',
+        downloadTask: (onProgress) async {
+          int successCount = 0;
+          for (int i = 0; i < songsToDownload.length; i++) {
+            final song = songsToDownload[i];
+            try {
+              // Download song với progress riêng cho từng bài
+              final localPath = await _downloadService.downloadSong(
+                song,
+                onProgress: (songProgress) {
+                  // Tính progress tổng thể cho album
+                  final totalProgress =
+                      (i + songProgress) / songsToDownload.length;
+                  onProgress(totalProgress);
+                },
+              );
+              final fileSize = await _downloadService.getFileSize(song.id);
+
+              // Lưu vào Firestore nếu có user
+              if (userId != 'guest_user') {
+                try {
+                  await FirebaseSetup.databaseService.addSongDownload(
+                    userId,
+                    song.id,
+                    localPath,
+                    fileSize,
+                  );
+                } catch (e) {
+                  print('⚠️ Không thể lưu vào Firestore: $e');
+                }
+              }
+
+              setState(() {
+                _downloadedSongs.add(song.id);
+              });
+              successCount++;
+            } catch (e) {
+              print('❌ Lỗi khi download song ${song.id}: $e');
+              // Continue với các songs khác
+            }
+          }
+
+          // Lưu album vào Firestore nếu có user
+          if (widget.albumId != null && userId != 'guest_user') {
+            try {
+              final songIds = _songs!.map((s) => s.id).toList();
+              await FirebaseSetup.databaseService.addAlbumDownload(
+                userId,
+                widget.albumId!,
+                songIds,
+              );
+            } catch (e) {
+              print('⚠️ Không thể lưu album vào Firestore: $e');
+            }
+          }
+
+          if (successCount < songsToDownload.length) {
+            throw Exception(
+              'Chỉ tải xuống được $successCount/${songsToDownload.length} bài hát',
+            );
+          }
+        },
+        onSuccess: () {
+          setState(() {
+            _isDownloadingAlbum = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '✅ Đã tải xuống ${songsToDownload.length} bài hát thành công',
+              ),
+              backgroundColor: const Color(0xFF1DB954),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        },
+        onError: (error) {
+          setState(() {
+            _isDownloadingAlbum = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Lỗi khi tải xuống album: $error'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -317,10 +651,35 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         const SizedBox(width: 8),
                         // Download icon
                         IconButton(
-                          icon: const Icon(Icons.download_outlined),
-                          color: Colors.grey[400],
-                          iconSize: 24,
-                          onPressed: () {},
+                          icon: _isDownloadingAlbum
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Color(0xFF1DB954),
+                                    ),
+                                  ),
+                                )
+                              : Icon(
+                                  widget.albumId != null &&
+                                          _songs != null &&
+                                          _songs!.isNotEmpty &&
+                                          _songs!.every((s) =>
+                                              _downloadedSongs.contains(s.id))
+                                      ? Icons.download_done
+                                      : Icons.download_outlined,
+                                  color: widget.albumId != null &&
+                                          _songs != null &&
+                                          _songs!.isNotEmpty &&
+                                          _songs!.every((s) =>
+                                              _downloadedSongs.contains(s.id))
+                                      ? const Color(0xFF1DB954)
+                                      : Colors.grey[400],
+                                  size: 24,
+                                ),
+                          onPressed: _handleDownloadAlbum,
                         ),
                         const SizedBox(width: 8),
                         // More icon
@@ -404,10 +763,30 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                             child: Row(
                               children: [
                                 // Download icon
-                                Icon(
-                                  Icons.download,
-                                  color: Colors.grey[400],
-                                  size: 13,
+                                GestureDetector(
+                                  onTap: () => _handleDownloadSong(song),
+                                  child: _downloadingSongs.contains(song.id)
+                                      ? const SizedBox(
+                                          width: 13,
+                                          height: 13,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.5,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                              Color(0xFF1DB954),
+                                            ),
+                                          ),
+                                        )
+                                      : Icon(
+                                          _downloadedSongs.contains(song.id)
+                                              ? Icons.download_done
+                                              : Icons.download,
+                                          color: _downloadedSongs.contains(
+                                                  song.id)
+                                              ? const Color(0xFF1DB954)
+                                              : Colors.grey[400],
+                                          size: 13,
+                                        ),
                                 ),
                                 const SizedBox(width: 12),
                                 // Track info

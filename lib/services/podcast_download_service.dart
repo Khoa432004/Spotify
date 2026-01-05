@@ -126,56 +126,111 @@ class PodcastDownloadService {
         throw Exception('URL không hợp lệ: ${episode.audioUrl}');
       }
 
-      // Tạo request với timeout và headers
-      final response = await http.get(
-        uri,
-        headers: {
+      // Download với streaming để tránh timeout và tiết kiệm memory
+      final filePath = await getLocalFilePath(episode.id);
+      final file = File(filePath);
+      
+      // Tạo request với timeout dài hơn cho podcast (5 phút)
+      final client = http.Client();
+      try {
+        final request = http.Request('GET', uri);
+        request.headers.addAll({
           'User-Agent': 'Flutter-Podcast-App',
           'Accept': '*/*',
-        },
-      ).timeout(
-        const Duration(seconds: 60), // Timeout 60 giây cho download
-        onTimeout: () {
-          throw Exception('Timeout khi download. Vui lòng kiểm tra kết nối mạng và thử lại.');
-        },
-      );
+        });
 
-      if (response.statusCode != 200) {
-        throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
-      }
+        final streamedResponse = await client
+            .send(request)
+            .timeout(
+              const Duration(minutes: 5), // Timeout 5 phút cho podcast
+              onTimeout: () {
+                client.close();
+                throw TimeoutException(
+                  'Download quá lâu. Podcast có thể quá lớn hoặc kết nối chậm.',
+                  const Duration(minutes: 5),
+                );
+              },
+            );
 
-      // Kiểm tra content type
-      final contentType = response.headers['content-type'] ?? '';
-      if (!contentType.toLowerCase().contains('audio') && 
-          !contentType.toLowerCase().contains('mp3') &&
-          !contentType.toLowerCase().contains('mpeg') &&
-          !contentType.toLowerCase().contains('octet-stream')) {
-        print('⚠️ Warning: Content-Type không phải audio: $contentType');
-        // Continue anyway, có thể vẫn là audio file
-      }
+        if (streamedResponse.statusCode != 200) {
+          client.close();
+          throw Exception(
+            'HTTP ${streamedResponse.statusCode}: ${streamedResponse.reasonPhrase}',
+          );
+        }
 
-      // Lưu file (chỉ cho non-web) - code này chỉ chạy khi !kIsWeb
-      if (!kIsWeb) {
-        final filePath = await getLocalFilePath(episode.id);
-        final file = File(filePath);
-        await file.writeAsBytes(response.bodyBytes);
+        // Kiểm tra content type
+        final contentType = streamedResponse.headers['content-type'] ?? '';
+        if (!contentType.toLowerCase().contains('audio') &&
+            !contentType.toLowerCase().contains('mp3') &&
+            !contentType.toLowerCase().contains('mpeg') &&
+            !contentType.toLowerCase().contains('octet-stream')) {
+          print('⚠️ Warning: Content-Type không phải audio: $contentType');
+          // Continue anyway, có thể vẫn là audio file
+        }
+
+        // Stream download vào file để tránh load toàn bộ vào memory
+        final sink = file.openWrite();
+        int bytesDownloaded = 0;
+        final totalBytes = streamedResponse.contentLength;
+
+        try {
+          await for (var chunk in streamedResponse.stream) {
+            sink.add(chunk);
+            bytesDownloaded += chunk.length;
+
+            // Callback progress nếu có
+            if (onProgress != null && totalBytes != null) {
+              onProgress(bytesDownloaded / totalBytes);
+            }
+
+            // Log progress mỗi 1MB
+            if (bytesDownloaded % (1024 * 1024) < chunk.length) {
+              final mbDownloaded = (bytesDownloaded / 1024 / 1024).toStringAsFixed(2);
+              if (totalBytes != null) {
+                final totalMb = (totalBytes / 1024 / 1024).toStringAsFixed(2);
+                final percent = (bytesDownloaded / totalBytes * 100).toStringAsFixed(1);
+                print('📥 Đã download: $mbDownloaded MB / $totalMb MB ($percent%)');
+              } else {
+                print('📥 Đã download: $mbDownloaded MB');
+              }
+            }
+          }
+
+          await sink.close();
+        } catch (e) {
+          await sink.close();
+          // Xóa file nếu download không hoàn thành
+          if (await file.exists()) {
+            await file.delete();
+          }
+          rethrow;
+        } finally {
+          client.close();
+        }
 
         final fileSize = await file.length();
         print('✅ Download thành công: $filePath');
         print('📊 File size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
 
         return filePath;
+      } catch (e) {
+        client.close();
+        // Xóa file nếu download không hoàn thành
+        if (await file.exists()) {
+          await file.delete();
+        }
+        rethrow;
       }
-      
-      // Fallback (không bao giờ đến đây trên web vì đã return ở trên)
-      return episode.audioUrl;
     } on http.ClientException catch (e) {
       // Xử lý lỗi network/connection
       print('❌ Lỗi kết nối khi download: $e');
       throw Exception('Lỗi kết nối mạng. Vui lòng kiểm tra internet và thử lại.');
     } on TimeoutException catch (e) {
       print('❌ Timeout khi download: $e');
-      throw Exception('Download quá lâu. Vui lòng kiểm tra kết nối mạng và thử lại.');
+      throw Exception(
+        'Download quá lâu (hơn 5 phút). Podcast có thể quá lớn hoặc kết nối chậm. Vui lòng thử lại.',
+      );
     } on FormatException catch (e) {
       print('❌ Lỗi format URL: $e');
       throw Exception('URL không hợp lệ. Vui lòng kiểm tra lại URL.');

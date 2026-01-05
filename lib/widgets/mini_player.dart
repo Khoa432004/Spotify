@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/music_player_provider.dart';
@@ -43,25 +44,8 @@ class MiniPlayer extends StatelessWidget {
                   // Album artwork
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
-                    child: song.artworkUrl != null
-                        ? Image.network(
-                            song.artworkUrl!,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 48,
-                                height: 48,
-                                color: Colors.grey[800],
-                                child: const Icon(
-                                  Icons.music_note,
-                                  color: Colors.grey,
-                                  size: 24,
-                                ),
-                              );
-                            },
-                          )
+                    child: song.artworkUrl != null && song.artworkUrl!.isNotEmpty
+                        ? _buildArtwork(song.artworkUrl!)
                         : Container(
                             width: 48,
                             height: 48,
@@ -133,6 +117,73 @@ class MiniPlayer extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Build artwork widget - hỗ trợ cả network và local file
+  Widget _buildArtwork(String artworkUrl) {
+    // Kiểm tra xem có phải local file không
+    final isLocalFile = artworkUrl.startsWith('/') || 
+                        artworkUrl.startsWith('file://') ||
+                        !artworkUrl.startsWith('http');
+    
+    if (isLocalFile) {
+      // Loại bỏ file:// prefix nếu có
+      final filePath = artworkUrl.replaceFirst('file://', '');
+      final file = File(filePath);
+      
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              width: 48,
+              height: 48,
+              color: Colors.grey[800],
+              child: const Icon(
+                Icons.music_note,
+                color: Colors.grey,
+                size: 24,
+              ),
+            );
+          },
+        );
+      } else {
+        // File không tồn tại, hiển thị placeholder
+        return Container(
+          width: 48,
+          height: 48,
+          color: Colors.grey[800],
+          child: const Icon(
+            Icons.music_note,
+            color: Colors.grey,
+            size: 24,
+          ),
+        );
+      }
+    } else {
+      // Network image
+      return Image.network(
+        artworkUrl,
+        width: 48,
+        height: 48,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: 48,
+            height: 48,
+            color: Colors.grey[800],
+            child: const Icon(
+              Icons.music_note,
+              color: Colors.grey,
+              size: 24,
+            ),
+          );
+        },
+      );
+    }
   }
 }
 

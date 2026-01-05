@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,8 @@ import '../database/models/podcast_model.dart';
 import '../database/models/song_model.dart';
 import '../providers/music_player_provider.dart';
 import '../services/podcast_download_service.dart';
+import '../widgets/mini_player.dart';
+import '../widgets/download_progress_dialog.dart';
 
 /// Màn hình Podcasts - Hiển thị danh sách podcast episodes
 class PodcastsScreen extends StatefulWidget {
@@ -28,12 +31,76 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
   bool _isLoading = true;
   Set<String> _downloadingEpisodes = {}; // Track episodes đang download
   Set<String> _downloadedEpisodes = {}; // Track episodes đã download
+  List<PodcastEpisodeModel> _downloadedEpisodesList =
+      []; // Danh sách episodes đã download
+  bool _isLoadingDownloads = false;
 
   @override
   void initState() {
     super.initState();
     _loadEpisodes();
     _checkDownloadedEpisodes();
+    _loadDownloadedEpisodes();
+  }
+
+  Future<void> _loadDownloadedEpisodes() async {
+    setState(() {
+      _isLoadingDownloads = true;
+    });
+
+    try {
+      // Lấy danh sách episode IDs đã download
+      final downloadedIds = await _downloadService.getDownloadedEpisodeIds();
+
+      if (downloadedIds.isEmpty) {
+        setState(() {
+          _downloadedEpisodesList = [];
+          _isLoadingDownloads = false;
+        });
+        return;
+      }
+
+      // Load thông tin episodes từ database
+      final downloadedEpisodes = <PodcastEpisodeModel>[];
+      for (var episodeId in downloadedIds) {
+        try {
+          // Lấy episode từ database
+          final episode = await _dbService.getPodcastEpisode(episodeId);
+          if (episode != null) {
+            downloadedEpisodes.add(episode);
+          }
+        } catch (e) {
+          print('⚠️ Không thể load episode $episodeId: $e');
+          // Nếu không load được từ DB, tạo episode từ file local
+          final localPath = await _downloadService.getLocalFilePath(episodeId);
+          final file = File(localPath);
+          if (await file.exists()) {
+            // Tạo episode tạm từ file local
+            downloadedEpisodes.add(
+              PodcastEpisodeModel(
+                id: episodeId,
+                podcastId: 'unknown',
+                title: 'Episode $episodeId',
+                episodeNumber: 0,
+                duration: 0,
+                audioUrl: localPath,
+                createdAt: await file.lastModified(),
+              ),
+            );
+          }
+        }
+      }
+
+      setState(() {
+        _downloadedEpisodesList = downloadedEpisodes;
+        _isLoadingDownloads = false;
+      });
+    } catch (e) {
+      print('❌ Lỗi khi load downloaded episodes: $e');
+      setState(() {
+        _isLoadingDownloads = false;
+      });
+    }
   }
 
   Future<void> _checkDownloadedEpisodes() async {
@@ -108,25 +175,24 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
         throw Exception('Podcast episode không có audio URL');
       }
 
-      final uri = Uri.tryParse(audioUrl);
-      // Cho phép file:// URI nếu là local file
-      if (uri == null || (!uri.hasScheme)) {
-        throw Exception('Audio URL không hợp lệ: $audioUrl');
-      }
-
+      // Tạo SongModel từ PodcastEpisodeModel
+      // MusicPlayerService sẽ tự xử lý validation URL (local file hoặc HTTP)
       final song = SongModel(
         id: episode.id,
         title: episode.title,
         artistId: episode.podcastId,
         artistName: 'Podcast',
+        albumName: 'Podcast Episode',
         duration: episode.duration,
         audioUrl: audioUrl,
         artworkUrl: episode.artworkUrl,
         createdAt: episode.createdAt,
       );
 
+      // Phát podcast episode giống như phát nhạc
       await player.playSong(song);
 
+      // Navigate to player screen
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const PlayerScreen()),
@@ -134,12 +200,23 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
     } catch (e) {
       if (mounted) {
         String errorMessage = 'Không thể phát podcast';
-        if (e.toString().contains('404') ||
-            e.toString().contains('not found')) {
+        final errorStr = e.toString().toLowerCase();
+
+        if (errorStr.contains('404') || errorStr.contains('not found')) {
           errorMessage = 'File audio không tồn tại. Vui lòng kiểm tra lại URL.';
-        } else if (e.toString().contains('network') ||
-            e.toString().contains('connection')) {
+        } else if (errorStr.contains('403') || errorStr.contains('forbidden')) {
+          errorMessage = 'Không có quyền truy cập file. Vui lòng thử lại.';
+        } else if (errorStr.contains('timeout') ||
+            errorStr.contains('timed out')) {
+          errorMessage =
+              'Hết thời gian chờ. Vui lòng kiểm tra kết nối mạng và thử lại.';
+        } else if (errorStr.contains('network') ||
+            errorStr.contains('connection')) {
           errorMessage = 'Lỗi kết nối mạng. Vui lòng thử lại.';
+        } else if (errorStr.contains('cannot load') ||
+            errorStr.contains('invalid')) {
+          errorMessage =
+              'Không thể tải file audio. File có thể bị hỏng hoặc định dạng không được hỗ trợ.';
         } else {
           errorMessage = 'Lỗi: ${e.toString()}';
         }
@@ -152,6 +229,7 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
           ),
         );
       }
+      print('❌ Lỗi khi phát podcast: $e');
     }
   }
 
@@ -167,60 +245,70 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
       return;
     }
 
-    try {
-      setState(() {
-        _downloadingEpisodes.add(episode.id);
-      });
+    setState(() {
+      _downloadingEpisodes.add(episode.id);
+    });
 
-      // Download episode
-      final localPath = await _downloadService.downloadEpisode(episode);
-      final fileSize = await _downloadService.getFileSize(episode.id);
-
-      // Lưu vào Firestore nếu có user
-      final userId = FirebaseSetup.currentUserId ?? 'guest_user';
-      if (userId != 'guest_user') {
-        try {
-          await _dbService.addPodcastEpisodeDownload(
-            userId,
-            episode.id,
-            episode.podcastId,
-            localPath,
-            fileSize,
+    // Hiển thị progress dialog
+    await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => DownloadProgressDialog(
+        title: 'Đang tải xuống',
+        subtitle: episode.title,
+        downloadTask: (onProgress) async {
+          // Download episode với progress callback
+          final localPath = await _downloadService.downloadEpisode(
+            episode,
+            onProgress: onProgress,
           );
-        } catch (e) {
-          print('⚠️ Không thể lưu vào Firestore: $e');
-        }
-      }
+          final fileSize = await _downloadService.getFileSize(episode.id);
 
-      setState(() {
-        _downloadingEpisodes.remove(episode.id);
-        _downloadedEpisodes.add(episode.id);
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Đã tải xuống thành công'),
-            backgroundColor: Color(0xFF1DB954),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _downloadingEpisodes.remove(episode.id);
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Lỗi khi tải xuống: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
+          // Lưu vào Firestore nếu có user
+          final userId = FirebaseSetup.currentUserId ?? 'guest_user';
+          if (userId != 'guest_user') {
+            try {
+              await _dbService.addPodcastEpisodeDownload(
+                userId,
+                episode.id,
+                episode.podcastId,
+                localPath,
+                fileSize,
+              );
+            } catch (e) {
+              print('⚠️ Không thể lưu vào Firestore: $e');
+            }
+          }
+        },
+        onSuccess: () {
+          setState(() {
+            _downloadingEpisodes.remove(episode.id);
+            _downloadedEpisodes.add(episode.id);
+          });
+          // Reload downloaded episodes list
+          _loadDownloadedEpisodes();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Đã tải xuống thành công'),
+              backgroundColor: Color(0xFF1DB954),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
+        onError: (error) {
+          setState(() {
+            _downloadingEpisodes.remove(episode.id);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Lỗi khi tải xuống: $error'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _deleteEpisode(PodcastEpisodeModel episode) async {
@@ -246,6 +334,7 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
 
         setState(() {
           _downloadedEpisodes.remove(episode.id);
+          _downloadedEpisodesList.removeWhere((e) => e.id == episode.id);
         });
 
         if (mounted) {
@@ -295,7 +384,10 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [const MiniPlayer(), _buildBottomNavigationBar(context)],
+      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -471,6 +563,45 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                         },
                       ),
               )
+            else if (_selectedTab == 'Downloads')
+              Expanded(
+                child: _isLoadingDownloads
+                    ? const Center(child: CircularProgressIndicator())
+                    : _downloadedEpisodesList.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.download_outlined,
+                              color: Colors.grey[600],
+                              size: 64,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Chưa có episode nào được tải xuống',
+                              style: TextStyle(color: Colors.grey[400]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tải xuống episodes để nghe offline',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        itemCount: _downloadedEpisodesList.length,
+                        itemBuilder: (context, index) {
+                          final episode = _downloadedEpisodesList[index];
+                          return _buildDownloadedEpisodeCard(episode);
+                        },
+                      ),
+              )
             else
               Expanded(
                 child: Center(
@@ -642,6 +773,238 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildDownloadedEpisodeCard(PodcastEpisodeModel episode) {
+    String showName = 'Unknown Show';
+    if (episode.podcastId.isNotEmpty) {
+      showName = 'The Basement Yard';
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF282828),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFF1DB954).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.grey[800],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: episode.artworkUrl != null
+                      ? Image.network(
+                          episode.artworkUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(color: Colors.grey[800]);
+                          },
+                        )
+                      : Container(color: Colors.grey[800]),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            episode.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ),
+                        // Offline indicator
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1DB954).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'OFFLINE',
+                            style: TextStyle(
+                              color: Color(0xFF1DB954),
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      showName,
+                      style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.more_horiz, color: Colors.grey[400], size: 20),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (episode.description != null)
+            Text(
+              episode.description!,
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 11,
+                height: 1.1,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => _playDownloadedEpisode(episode),
+                child: Container(
+                  width: 31,
+                  height: 31,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Color(0xFF282828),
+                    size: 15.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                _formatDate(episode.releaseDate),
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 10,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.1,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Container(
+                  width: 3,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Text(
+                episode.formattedDuration,
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 10,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.1,
+                ),
+              ),
+              const Spacer(),
+              // Delete button
+              GestureDetector(
+                onTap: () => _deleteEpisode(episode),
+                child: Icon(
+                  Icons.delete_outline,
+                  color: Colors.grey[600],
+                  size: 25,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _playDownloadedEpisode(PodcastEpisodeModel episode) async {
+    try {
+      final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+
+      // Luôn dùng local file cho downloaded episodes
+      final localPath = await _downloadService.getLocalFilePath(episode.id);
+      final file = File(localPath);
+
+      if (!await file.exists()) {
+        throw Exception('File đã tải xuống không tồn tại. Vui lòng tải lại.');
+      }
+
+      // Tạo SongModel với local path
+      final song = SongModel(
+        id: episode.id,
+        title: episode.title,
+        artistId: episode.podcastId,
+        artistName: 'Podcast',
+        albumName: 'Podcast Episode',
+        duration: episode.duration,
+        audioUrl: localPath, // Dùng local path
+        artworkUrl: episode.artworkUrl,
+        createdAt: episode.createdAt,
+      );
+
+      // Phát podcast episode từ local file
+      await player.playSong(song);
+
+      // Navigate to player screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const PlayerScreen()),
+      );
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Không thể phát podcast';
+        final errorStr = e.toString().toLowerCase();
+
+        if (errorStr.contains('not exist') ||
+            errorStr.contains('không tồn tại')) {
+          errorMessage = 'File đã tải xuống không tồn tại. Vui lòng tải lại.';
+          // Xóa khỏi danh sách downloaded
+          setState(() {
+            _downloadedEpisodes.remove(episode.id);
+            _downloadedEpisodesList.removeWhere((e) => e.id == episode.id);
+          });
+        } else {
+          errorMessage = 'Lỗi: ${e.toString()}';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      print('❌ Lỗi khi phát downloaded podcast: $e');
+    }
   }
 
   /// Tạo Bottom Navigation Bar với style Spotify

@@ -671,6 +671,24 @@ class DatabaseService {
     }
   }
 
+  /// Lấy podcast episode theo ID
+  Future<PodcastEpisodeModel?> getPodcastEpisode(String episodeId) async {
+    try {
+      final doc = await _firestore
+          .collection(FirestoreCollections.podcastEpisodes)
+          .doc(episodeId)
+          .get();
+      
+      if (doc.exists) {
+        return PodcastEpisodeModel.fromFirestore(doc);
+      }
+      return null;
+    } catch (e) {
+      print('Error getting podcast episode: $e');
+      return null;
+    }
+  }
+
   // ==================== STORAGE OPERATIONS ====================
 
   /// Upload audio data (Uint8List)
@@ -840,6 +858,261 @@ class DatabaseService {
       );
     } catch (e) {
       print('Error checking podcast episode download status: $e');
+      return false;
+    }
+  }
+
+  // ==================== SONG DOWNLOADS OPERATIONS ====================
+
+  /// Thêm song vào downloads
+  Future<void> addSongDownload(
+    String userId,
+    String songId,
+    String localPath,
+    int fileSize,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      UserDownloadsModel downloads;
+
+      if (doc.exists) {
+        downloads = UserDownloadsModel.fromFirestore(doc);
+
+        // Kiểm tra xem song đã được download chưa
+        final existingIndex = downloads.downloadedSongs.indexWhere(
+          (s) => s.songId == songId,
+        );
+
+        if (existingIndex != -1) {
+          // Song đã tồn tại, không cần thêm lại
+          return;
+        }
+
+        // Thêm song mới
+        final updatedSongs = [
+          ...downloads.downloadedSongs,
+          DownloadedSong(
+            songId: songId,
+            downloadedAt: DateTime.now(),
+            localPath: localPath,
+          ),
+        ];
+
+        downloads = downloads.copyWith(
+          downloadedSongs: updatedSongs,
+          storageUsed: downloads.storageUsed + fileSize,
+          updatedAt: DateTime.now(),
+        );
+      } else {
+        // Tạo mới
+        downloads = UserDownloadsModel(
+          userId: userId,
+          downloadedSongs: [
+            DownloadedSong(
+              songId: songId,
+              downloadedAt: DateTime.now(),
+              localPath: localPath,
+            ),
+          ],
+          storageUsed: fileSize,
+          updatedAt: DateTime.now(),
+        );
+      }
+
+      await docRef.set(downloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã thêm song vào downloads: $songId');
+    } catch (e) {
+      print('Error adding song download: $e');
+      rethrow;
+    }
+  }
+
+  /// Xóa song khỏi downloads
+  Future<void> removeSongDownload(
+    String userId,
+    String songId,
+    int fileSize,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      if (!doc.exists) {
+        return;
+      }
+
+      final downloads = UserDownloadsModel.fromFirestore(doc);
+      final updatedSongs = downloads.downloadedSongs
+          .where((s) => s.songId != songId)
+          .toList();
+
+      final updatedDownloads = downloads.copyWith(
+        downloadedSongs: updatedSongs,
+        storageUsed: (downloads.storageUsed - fileSize)
+            .clamp(0, double.infinity)
+            .toInt(),
+        updatedAt: DateTime.now(),
+      );
+
+      await docRef.set(updatedDownloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã xóa song khỏi downloads: $songId');
+    } catch (e) {
+      print('Error removing song download: $e');
+      rethrow;
+    }
+  }
+
+  /// Kiểm tra xem song đã được download chưa (trong Firestore)
+  Future<bool> isSongDownloaded(
+    String userId,
+    String songId,
+  ) async {
+    try {
+      final downloads = await getUserDownloads(userId);
+      if (downloads == null) {
+        return false;
+      }
+
+      return downloads.downloadedSongs.any(
+        (s) => s.songId == songId,
+      );
+    } catch (e) {
+      print('Error checking song download status: $e');
+      return false;
+    }
+  }
+
+  // ==================== ALBUM DOWNLOADS OPERATIONS ====================
+
+  /// Thêm album vào downloads
+  Future<void> addAlbumDownload(
+    String userId,
+    String albumId,
+    List<String> songIds,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      UserDownloadsModel downloads;
+
+      if (doc.exists) {
+        downloads = UserDownloadsModel.fromFirestore(doc);
+
+        // Kiểm tra xem album đã được download chưa
+        final existingIndex = downloads.downloadedAlbums.indexWhere(
+          (a) => a.albumId == albumId,
+        );
+
+        if (existingIndex != -1) {
+          // Album đã tồn tại, cập nhật songIds
+          final updatedAlbums = List<DownloadedAlbum>.from(downloads.downloadedAlbums);
+          updatedAlbums[existingIndex] = DownloadedAlbum(
+            albumId: albumId,
+            downloadedAt: updatedAlbums[existingIndex].downloadedAt,
+            songIds: songIds,
+          );
+
+          downloads = downloads.copyWith(
+            downloadedAlbums: updatedAlbums,
+            updatedAt: DateTime.now(),
+          );
+        } else {
+          // Thêm album mới
+          final updatedAlbums = [
+            ...downloads.downloadedAlbums,
+            DownloadedAlbum(
+              albumId: albumId,
+              downloadedAt: DateTime.now(),
+              songIds: songIds,
+            ),
+          ];
+
+          downloads = downloads.copyWith(
+            downloadedAlbums: updatedAlbums,
+            updatedAt: DateTime.now(),
+          );
+        }
+      } else {
+        // Tạo mới
+        downloads = UserDownloadsModel(
+          userId: userId,
+          downloadedAlbums: [
+            DownloadedAlbum(
+              albumId: albumId,
+              downloadedAt: DateTime.now(),
+              songIds: songIds,
+            ),
+          ],
+          updatedAt: DateTime.now(),
+        );
+      }
+
+      await docRef.set(downloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã thêm album vào downloads: $albumId');
+    } catch (e) {
+      print('Error adding album download: $e');
+      rethrow;
+    }
+  }
+
+  /// Xóa album khỏi downloads
+  Future<void> removeAlbumDownload(
+    String userId,
+    String albumId,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      if (!doc.exists) {
+        return;
+      }
+
+      final downloads = UserDownloadsModel.fromFirestore(doc);
+      final updatedAlbums = downloads.downloadedAlbums
+          .where((a) => a.albumId != albumId)
+          .toList();
+
+      final updatedDownloads = downloads.copyWith(
+        downloadedAlbums: updatedAlbums,
+        updatedAt: DateTime.now(),
+      );
+
+      await docRef.set(updatedDownloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã xóa album khỏi downloads: $albumId');
+    } catch (e) {
+      print('Error removing album download: $e');
+      rethrow;
+    }
+  }
+
+  /// Kiểm tra xem album đã được download chưa (trong Firestore)
+  Future<bool> isAlbumDownloaded(
+    String userId,
+    String albumId,
+  ) async {
+    try {
+      final downloads = await getUserDownloads(userId);
+      if (downloads == null) {
+        return false;
+      }
+
+      return downloads.downloadedAlbums.any(
+        (a) => a.albumId == albumId,
+      );
+    } catch (e) {
+      print('Error checking album download status: $e');
       return false;
     }
   }
