@@ -48,21 +48,30 @@ class _ConcertsScreenState extends State<ConcertsScreen> {
     try {
       List<ConcertModel> concerts;
       if (_currentLocation.isNotEmpty && _currentLocation != 'All Locations') {
+        print('🎵 Đang load concerts cho location: $_currentLocation');
         concerts = await _dbService.getConcertsByLocation(
           city: _currentLocation,
-          limit: 20,
+          limit: 100,
         );
+        print('🎵 Đã load ${concerts.length} concerts từ location: $_currentLocation');
         if (concerts.isEmpty) {
-          concerts = await _dbService.getRecommendedConcerts(limit: 20);
+          print('⚠️ Không có concerts ở $_currentLocation, load recommended concerts');
+          concerts = await _dbService.getRecommendedConcerts(limit: 100);
+          print('🎵 Đã load ${concerts.length} recommended concerts');
         }
       } else {
-        concerts = await _dbService.getRecommendedConcerts(limit: 20);
+        print('🎵 Đang load recommended concerts (All Locations)');
+        concerts = await _dbService.getRecommendedConcerts(limit: 100);
+        print('🎵 Đã load ${concerts.length} recommended concerts');
       }
 
       setState(() {
         _concerts = concerts;
       });
-    } catch (e) {
+      print('✅ UI đã được cập nhật với ${_concerts.length} concerts');
+    } catch (e, stackTrace) {
+      print('❌ Lỗi khi load concerts: $e');
+      print('📋 Stack trace: $stackTrace');
       setState(() {
         _concerts = [];
       });

@@ -9,6 +9,7 @@ import 'models/artist_model.dart';
 import 'models/playlist_model.dart';
 import 'models/concert_model.dart';
 import 'models/podcast_model.dart';
+import 'models/user_downloads_model.dart';
 
 /// Service class để quản lý tất cả các operations với Firestore và Storage
 class DatabaseService {
@@ -468,12 +469,14 @@ class DatabaseService {
     int limit = 50,
   }) async {
     try {
+      print('📡 Đang query Firestore cho concerts ở city: $city');
       final snapshot = await _firestore
           .collection(FirestoreCollections.concerts)
           .where('status', isEqualTo: 'upcoming')
-          .limit(100)
+          .limit(500)
           .get();
 
+      print('📡 Đã fetch ${snapshot.docs.length} documents từ Firestore');
       final filtered = <ConcertModel>[];
       for (var doc in snapshot.docs) {
         try {
@@ -484,38 +487,50 @@ class DatabaseService {
             filtered.add(concert);
           }
         } catch (e) {
-          // Skip invalid concerts
+          print('⚠️ Skip invalid concert document: $e');
         }
       }
-
+      
+      print('📡 Sau khi filter theo city "$city": ${filtered.length} concerts');
       filtered.sort((a, b) => a.dateTime.compareTo(b.dateTime));
-      return filtered.take(20).toList();
-    } catch (e) {
+      final result = filtered.take(limit).toList();
+      print('✅ Trả về ${result.length} concerts (limit: $limit)');
+      return result;
+    } catch (e, stackTrace) {
+      print('❌ Lỗi trong getConcertsByLocation: $e');
+      print('📋 Stack trace: $stackTrace');
       return [];
     }
   }
 
   Future<List<ConcertModel>> getRecommendedConcerts({int limit = 20}) async {
     try {
+      print('📡 Đang query Firestore cho recommended concerts');
       final snapshot = await _firestore
           .collection(FirestoreCollections.concerts)
           .where('status', isEqualTo: 'upcoming')
-          .limit(100)
+          .limit(500)
           .get();
 
+      print('📡 Đã fetch ${snapshot.docs.length} documents từ Firestore');
       final concerts = <ConcertModel>[];
       for (var doc in snapshot.docs) {
         try {
           final concert = ConcertModel.fromFirestore(doc);
           concerts.add(concert);
         } catch (e) {
-          // Skip invalid concerts
+          print('⚠️ Skip invalid concert document: $e');
         }
       }
-
+      
+      print('📡 Đã parse ${concerts.length} concerts thành công');
       concerts.sort((a, b) => a.dateTime.compareTo(b.dateTime));
-      return concerts.take(limit).toList();
-    } catch (e) {
+      final result = concerts.take(limit).toList();
+      print('✅ Trả về ${result.length} recommended concerts (limit: $limit)');
+      return result;
+    } catch (e, stackTrace) {
+      print('❌ Lỗi trong getRecommendedConcerts: $e');
+      print('📋 Stack trace: $stackTrace');
       return [];
     }
   }
@@ -681,6 +696,147 @@ class DatabaseService {
     } catch (e) {
       print('Error getting download URL: $e');
       rethrow;
+    }
+  }
+
+  // ==================== PODCAST DOWNLOADS OPERATIONS ====================
+
+  /// Lấy thông tin downloads của user
+  Future<UserDownloadsModel?> getUserDownloads(String userId) async {
+    try {
+      final doc = await _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId)
+          .get();
+      if (doc.exists) {
+        return UserDownloadsModel.fromFirestore(doc);
+      }
+      return null;
+    } catch (e) {
+      print('Error getting user downloads: $e');
+      return null;
+    }
+  }
+
+  /// Thêm podcast episode vào downloads
+  Future<void> addPodcastEpisodeDownload(
+    String userId,
+    String episodeId,
+    String podcastId,
+    String localPath,
+    int fileSize,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      UserDownloadsModel downloads;
+
+      if (doc.exists) {
+        downloads = UserDownloadsModel.fromFirestore(doc);
+        
+        // Kiểm tra xem episode đã được download chưa
+        final existingIndex = downloads.downloadedPodcastEpisodes
+            .indexWhere((e) => e.episodeId == episodeId);
+        
+        if (existingIndex != -1) {
+          // Episode đã tồn tại, không cần thêm lại
+          return;
+        }
+
+        // Thêm episode mới
+        final updatedEpisodes = [
+          ...downloads.downloadedPodcastEpisodes,
+          DownloadedPodcastEpisode(
+            episodeId: episodeId,
+            podcastId: podcastId,
+            downloadedAt: DateTime.now(),
+            localPath: localPath,
+            fileSize: fileSize,
+          ),
+        ];
+
+        downloads = downloads.copyWith(
+          downloadedPodcastEpisodes: updatedEpisodes,
+          storageUsed: downloads.storageUsed + fileSize,
+          updatedAt: DateTime.now(),
+        );
+      } else {
+        // Tạo mới
+        downloads = UserDownloadsModel(
+          userId: userId,
+          downloadedPodcastEpisodes: [
+            DownloadedPodcastEpisode(
+              episodeId: episodeId,
+              podcastId: podcastId,
+              downloadedAt: DateTime.now(),
+              localPath: localPath,
+              fileSize: fileSize,
+            ),
+          ],
+          storageUsed: fileSize,
+          updatedAt: DateTime.now(),
+        );
+      }
+
+      await docRef.set(downloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã thêm podcast episode vào downloads: $episodeId');
+    } catch (e) {
+      print('Error adding podcast episode download: $e');
+      rethrow;
+    }
+  }
+
+  /// Xóa podcast episode khỏi downloads
+  Future<void> removePodcastEpisodeDownload(
+    String userId,
+    String episodeId,
+    int fileSize,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      if (!doc.exists) {
+        return;
+      }
+
+      final downloads = UserDownloadsModel.fromFirestore(doc);
+      final updatedEpisodes = downloads.downloadedPodcastEpisodes
+          .where((e) => e.episodeId != episodeId)
+          .toList();
+
+      final updatedDownloads = downloads.copyWith(
+        downloadedPodcastEpisodes: updatedEpisodes,
+        storageUsed: (downloads.storageUsed - fileSize).clamp(0, double.infinity).toInt(),
+        updatedAt: DateTime.now(),
+      );
+
+      await docRef.set(updatedDownloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã xóa podcast episode khỏi downloads: $episodeId');
+    } catch (e) {
+      print('Error removing podcast episode download: $e');
+      rethrow;
+    }
+  }
+
+  /// Kiểm tra xem episode đã được download chưa (trong Firestore)
+  Future<bool> isPodcastEpisodeDownloaded(String userId, String episodeId) async {
+    try {
+      final downloads = await getUserDownloads(userId);
+      if (downloads == null) {
+        return false;
+      }
+
+      return downloads.downloadedPodcastEpisodes
+          .any((e) => e.episodeId == episodeId);
+    } catch (e) {
+      print('Error checking podcast episode download status: $e');
+      return false;
     }
   }
 
