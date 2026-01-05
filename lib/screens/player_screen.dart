@@ -71,10 +71,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           backgroundColor: const Color(0xFF1A1A1A),
           bottomNavigationBar: _buildBottomNavigationBar(context),
           body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                children: [
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Column(
+                  children: [
                   const SizedBox(height: 40),
                   // Header
                   Row(
@@ -386,7 +387,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ],
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

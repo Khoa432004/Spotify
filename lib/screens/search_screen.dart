@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/search_provider.dart';
 import 'music_genre_screen.dart';
 import 'search_results_screen.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
 
-/// Màn hình Search - Hiển thị thanh tìm kiếm và các thể loại
+/// Màn hình Search - Hiển thị thanh tìm kiếm và các thể loại động từ database
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
@@ -16,83 +18,100 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Load available genres từ database khi màn hình mở
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<SearchProvider>().loadAvailableGenres();
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  // Helper: Lấy gradient cho genre
+  Gradient _getGradientForGenre(String genre) {
+    final gradients = {
+      'Electronic': const LinearGradient(
+        colors: [Color(0xFF86B7AE), Color(0xFFA6E3D7)],
+      ),
+      'Rock': const LinearGradient(
+        colors: [Color(0xFFEC2137), Color(0xFFA80A1C)],
+      ),
+      'Pop': const LinearGradient(
+        colors: [Color(0xFF003068), Color(0xFF005AA7)],
+      ),
+      'Hip-Hop': const LinearGradient(
+        colors: [Color(0xFF822434), Color(0xFFF7CFD3)],
+      ),
+      'R&B': const LinearGradient(
+        colors: [Color(0xFFF4C915), Color(0xFFE39500)],
+      ),
+      'Folk': const LinearGradient(
+        colors: [Color(0xFF1B7573), Color(0xFF0F4C4F)],
+      ),
+      'Alternative': const LinearGradient(
+        colors: [Color(0xFF9BC0C8), Color(0xFFC0D6D4)],
+      ),
+      'V-Pop': const LinearGradient(
+        colors: [Color(0xFF5E7899), Color(0xFF99BACD)],
+      ),
+    };
+    return gradients[genre] ??
+        const LinearGradient(colors: [Color(0xFF1DB954), Color(0xFF0D7A33)]);
+  }
+
+  // Helper: Lấy image cho genre
+  String _getImageForGenre(String genre) {
+    // Sử dụng các hình ảnh có sẵn
+    return 'https://www.figma.com/api/mcp/asset/ae9540e6-a0ea-44cc-8a0a-b987cd3dbf73';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
+    return Consumer<SearchProvider>(
+      builder: (context, searchProvider, child) {
+        final availableGenres = searchProvider.availableGenres;
 
-              // Header
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  'Search',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
+        // Lấy top genres (lấy 2 đầu tiên nếu có)
+        final topGenres = availableGenres.take(2).toList();
 
-              // Search Bar
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SearchResultsScreen(),
+        // Lấy popular genres (tiếp theo 2 genres)
+        final popularGenres = availableGenres.skip(2).take(2).toList();
+
+        // Lấy browse all genres (còn lại)
+        final browseGenres = availableGenres.skip(4).take(4).toList();
+
+        return Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          body: SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 16),
+
+                  // Header
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      'Search',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  },
-                  child: Container(
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(6),
                     ),
-                    child: TextField(
-                      controller: _searchController,
-                      readOnly: true,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 13.7,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: 'Artists, songs. or podcasts',
-                        hintStyle: TextStyle(
-                          color: Colors.black,
-                          fontSize: 13.7,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          color: Colors.black,
-                          size: 20,
-                        ),
-                        suffixIcon: Icon(
-                          Icons.mic,
-                          color: Colors.black,
-                          size: 20,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                      ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Search Bar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: GestureDetector(
                       onTap: () {
                         Navigator.push(
                           context,
@@ -101,182 +120,231 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                         );
                       },
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Your top genres Section
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  'Your top genres',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildCategoryCard(
-                        'Dance/\nElectronic',
-                        const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFF86B7AE), Color(0xFFA6E3D7)],
+                      child: Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        'https://www.figma.com/api/mcp/asset/ae9540e6-a0ea-44cc-8a0a-b987cd3dbf73',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildCategoryCard(
-                        'Rock',
-                        const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFFEC2137), Color(0xFFA80A1C)],
-                        ),
-                        'https://www.figma.com/api/mcp/asset/52c43718-e153-4b33-8a81-87b473d3b95d',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Popular podcast categories Section
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  'Popular podcast categories',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildCategoryCard(
-                        'YouTubers',
-                        const LinearGradient(
-                          colors: [Color(0xFF003068), Color(0xFF003068)],
-                        ),
-                        'https://www.figma.com/api/mcp/asset/84794e7a-f88d-469a-a553-64ee0c4ca3d1',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildCategoryCard(
-                        'Comedy',
-                        const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFF822434), Color(0xFFF7CFD3)],
-                        ),
-                        'https://www.figma.com/api/mcp/asset/e2888b15-3622-4e96-83d4-241431df759b',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Browse all Section
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  'Browse all',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildCategoryCard(
-                            'Podcasts',
-                            const LinearGradient(
-                              colors: [Color(0xFFF4C915), Color(0xFFF4C915)],
-                            ),
-                            'https://www.figma.com/api/mcp/asset/0fbbee46-f0c5-4238-aff4-60f21d4cd0f8',
+                        child: TextField(
+                          controller: _searchController,
+                          readOnly: true,
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 13.7,
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildCategoryCard(
-                            'Charts',
-                            const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Color(0xFF1B7573), Color(0xFF0F4C4F)],
+                          decoration: const InputDecoration(
+                            hintText: 'Artists, songs. or podcasts',
+                            hintStyle: TextStyle(
+                              color: Colors.black,
+                              fontSize: 13.7,
                             ),
-                            'https://www.figma.com/api/mcp/asset/959c1066-09cc-4853-855b-a371914360fe',
+                            prefixIcon: Icon(
+                              Icons.search,
+                              color: Colors.black,
+                              size: 20,
+                            ),
+                            suffixIcon: Icon(
+                              Icons.mic,
+                              color: Colors.black,
+                              size: 20,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
                           ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const SearchResultsScreen(),
+                              ),
+                            );
+                          },
                         ),
-                      ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Loading state
+                  if (availableGenres.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF1DB954),
+                        ),
+                      ),
+                    ),
+
+                  // Your top genres Section (nếu có genres)
+                  if (topGenres.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        'Your top genres',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildCategoryCard(
-                            'Chillout',
-                            const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Color(0xFF9BC0C8), Color(0xFFC0D6D4)],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Row(
+                        children: [
+                          if (topGenres.isNotEmpty)
+                            Expanded(
+                              child: _buildCategoryCard(
+                                topGenres[0],
+                                _getGradientForGenre(topGenres[0]),
+                                _getImageForGenre(topGenres[0]),
+                              ),
                             ),
-                            'https://www.figma.com/api/mcp/asset/f1735998-6fe0-41e6-8a43-3cad44f9efb4',
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildCategoryCard(
-                            'Study\nJams',
-                            const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Color(0xFF5E7899), Color(0xFF99BACD)],
+                          if (topGenres.length > 1) ...[
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildCategoryCard(
+                                topGenres[1],
+                                _getGradientForGenre(topGenres[1]),
+                                _getImageForGenre(topGenres[1]),
+                              ),
                             ),
-                            'https://www.figma.com/api/mcp/asset/9aa2803b-98f7-42f7-94d2-c01b1322c897',
-                          ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Popular music genres Section (nếu có)
+                  if (popularGenres.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        'Popular music genres',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Row(
+                        children: [
+                          if (popularGenres.isNotEmpty)
+                            Expanded(
+                              child: _buildCategoryCard(
+                                popularGenres[0],
+                                _getGradientForGenre(popularGenres[0]),
+                                _getImageForGenre(popularGenres[0]),
+                              ),
+                            ),
+                          if (popularGenres.length > 1) ...[
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildCategoryCard(
+                                popularGenres[1],
+                                _getGradientForGenre(popularGenres[1]),
+                                _getImageForGenre(popularGenres[1]),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Browse all Section (nếu có)
+                  if (browseGenres.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        'Browse all',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Column(
+                        children: [
+                          // First row
+                          Row(
+                            children: [
+                              if (browseGenres.isNotEmpty)
+                                Expanded(
+                                  child: _buildCategoryCard(
+                                    browseGenres[0],
+                                    _getGradientForGenre(browseGenres[0]),
+                                    _getImageForGenre(browseGenres[0]),
+                                  ),
+                                ),
+                              if (browseGenres.length > 1) ...[
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildCategoryCard(
+                                    browseGenres[1],
+                                    _getGradientForGenre(browseGenres[1]),
+                                    _getImageForGenre(browseGenres[1]),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          // Second row (nếu có đủ genres)
+                          if (browseGenres.length > 2) ...[
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                if (browseGenres.length > 2)
+                                  Expanded(
+                                    child: _buildCategoryCard(
+                                      browseGenres[2],
+                                      _getGradientForGenre(browseGenres[2]),
+                                      _getImageForGenre(browseGenres[2]),
+                                    ),
+                                  ),
+                                if (browseGenres.length > 3) ...[
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: _buildCategoryCard(
+                                      browseGenres[3],
+                                      _getGradientForGenre(browseGenres[3]),
+                                      _getImageForGenre(browseGenres[3]),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
-                ),
+
+                  const SizedBox(height: 80),
+                ],
               ),
-              const SizedBox(height: 80),
-            ],
+            ),
           ),
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+          bottomNavigationBar: _buildBottomNavigationBar(),
+        );
+      },
     );
   }
 
@@ -363,8 +431,7 @@ class _SearchScreenState extends State<SearchScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                MusicGenreScreen(genreName: title.replaceAll('\n', ' ')),
+            builder: (context) => MusicGenreScreen(genreName: title),
           ),
         );
       },

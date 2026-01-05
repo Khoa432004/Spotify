@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/home_provider.dart';
 import '../widgets/playlist_card.dart';
 import '../widgets/album_card.dart';
 import '../widgets/section_header.dart';
@@ -35,168 +37,152 @@ class HomeScreen extends StatelessWidget {
       backgroundColor: const Color(0xFF121212),
       body: SafeArea(
         child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top Bar với Settings Icon và Concerts button
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Concerts button
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ConcertsScreen(),
-                          ),
-                        );
-                      },
-                      child: const Text(
-                        'Concerts',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    Row(
+          child: Consumer<HomeProvider>(
+            builder: (context, homeProvider, child) {
+              if (homeProvider.isLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top Bar
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.cloud_done,
-                            color: Colors.white,
-                            size: 24,
-                          ),
+                        TextButton(
                           onPressed: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const FirebaseTestScreen(),
+                                builder: (context) => const ConcertsScreen(),
                               ),
                             );
                           },
-                          tooltip: 'Test Firebase Connection',
+                          child: const Text(
+                            'Concerts',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
-                        const Icon(
-                          Icons.settings_outlined,
-                          color: Colors.white,
-                          size: 24,
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.cloud_done,
+                                color: Colors.white,
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const FirebaseTestScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Icon(
+                              Icons.settings_outlined,
+                              color: Colors.white,
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
 
-              // "Good afternoon" Section
-              const SectionHeader(title: 'Good afternoon', fontSize: 24),
-              const SizedBox(height: 16),
+                  // Good Afternoon Section
+                  const SectionHeader(title: 'Good afternoon', fontSize: 24),
+                  const SizedBox(height: 16),
 
-              // Grid của các playlist items
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Column(
-                  children: [
-                    Row(
-                      children: const [
-                        Expanded(
-                          child: PlaylistCard(
-                            title: 'Dance & EDM',
-                            imageUrl: imgImage4,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: PlaylistCard(
-                            title: 'Country Rocks',
-                            imageUrl: imgImage1,
-                          ),
-                        ),
-                      ],
+                  // Quick Access Grid
+                  if (homeProvider.quickAccessPlaylists.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: homeProvider.quickAccessPlaylists.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio:
+                                  3, // Adjust aspect ratio for card shape
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                        itemBuilder: (context, index) {
+                          final playlist =
+                              homeProvider.quickAccessPlaylists[index];
+                          return PlaylistCard(
+                            title: playlist.title,
+                            imageUrl: playlist.artworkUrl ?? imgArtwork1,
+                          );
+                        },
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: const [
-                        Expanded(
-                          child: PlaylistCard(
-                            title: 'Indie',
-                            imageUrl: imgImage3,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: PlaylistCard(
-                            title: 'Chilled Hits',
-                            imageUrl: imgArtwork1,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: const [
-                        Expanded(
-                          child: PlaylistCard(
-                            title: 'Electronic',
-                            imageUrl: imgImage2,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: PlaylistCard(
-                            title: 'Are & Be',
-                            imageUrl: imgArtwork1,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
 
-              // "Recently played" Section
-              const SectionHeader(title: 'Recently played'),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 170,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  children: const [
-                    AlbumCard(title: 'Chilled Hits', imageUrl: imgArtwork1),
-                    SizedBox(width: 16),
-                    AlbumCard(title: 'Study Beats', imageUrl: imgReplace1),
-                    SizedBox(width: 16),
-                    AlbumCard(title: 'Chill As Folk', imageUrl: imgArtwork1),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
+                  const SizedBox(height: 32),
 
-              // "Made for You" Section
-              const SectionHeader(title: 'Made for You'),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 190,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  children: const [
-                    LargeAlbumCard(imageUrl: imgArtwork1),
-                    SizedBox(width: 16),
-                    LargeAlbumCard(imageUrl: imgArtwork2),
-                    SizedBox(width: 16),
-                    LargeAlbumCard(imageUrl: imgArtwork3),
+                  // Recently Played Section
+                  if (homeProvider.recentlyPlayedAlbums.isNotEmpty) ...[
+                    const SectionHeader(title: 'Recently played'),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 170,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        itemCount: homeProvider.recentlyPlayedAlbums.length,
+                        itemBuilder: (context, index) {
+                          final album =
+                              homeProvider.recentlyPlayedAlbums[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 16.0),
+                            child: AlbumCard(
+                              title: album.title,
+                              imageUrl: album.artworkUrl ?? imgArtwork1,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 32),
                   ],
-                ),
-              ),
-              const SizedBox(height: 100), // Space for bottom nav
-            ],
+
+                  // Made for You Section
+                  if (homeProvider.madeForYouAlbums.isNotEmpty) ...[
+                    const SectionHeader(title: 'Made for You'),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 190,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        itemCount: homeProvider.madeForYouAlbums.length,
+                        itemBuilder: (context, index) {
+                          final album = homeProvider.madeForYouAlbums[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 16.0),
+                            child: LargeAlbumCard(
+                              imageUrl: album.artworkUrl ?? imgArtwork1,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 100),
+                ],
+              );
+            },
           ),
         ),
       ),

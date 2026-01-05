@@ -4,11 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'database/firebase_setup.dart';
 import 'providers/music_player_provider.dart';
+import 'providers/home_provider.dart';
+import 'providers/search_provider.dart';
 import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Firebase
   try {
     await FirebaseSetup.initialize();
@@ -16,13 +18,15 @@ void main() async {
   } catch (e) {
     print('❌ Firebase setup failed: $e');
   }
-  
+
   runApp(
     DevicePreview(
       enabled: !kReleaseMode, // Chỉ bật trong chế độ debug/profile
       builder: (context) => MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => MusicPlayerProvider()),
+          ChangeNotifierProvider(create: (_) => HomeProvider()),
+          ChangeNotifierProvider(create: (_) => SearchProvider()),
         ],
         child: const MyApp(),
       ),

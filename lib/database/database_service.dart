@@ -9,6 +9,7 @@ import 'models/artist_model.dart';
 import 'models/playlist_model.dart';
 import 'models/concert_model.dart';
 import 'models/podcast_model.dart';
+import 'models/user_downloads_model.dart';
 
 /// Service class để quản lý tất cả các operations với Firestore và Storage
 class DatabaseService {
@@ -96,43 +97,71 @@ class DatabaseService {
         query = query.where('albumId', isEqualTo: albumId);
       }
 
-      query = query.orderBy('popularity', descending: true).limit(limit);
+      // Chỉ orderBy nếu KHÔNG filter by genre (để tránh cần composite index)
+      if (genre == null) {
+        query = query.orderBy('popularity', descending: true);
+      }
+
+      query = query.limit(limit);
 
       if (startAfter != null) {
-        final startAfterDoc =
-            await _firestore.collection(FirestoreCollections.songs).doc(startAfter).get();
+        final startAfterDoc = await _firestore
+            .collection(FirestoreCollections.songs)
+            .doc(startAfter)
+            .get();
         query = query.startAfterDocument(startAfterDoc);
       }
 
       final snapshot = await query.get();
-      return snapshot.docs
-          .map((doc) => SongModel.fromFirestore(doc))
-          .toList();
+      return snapshot.docs.map((doc) => SongModel.fromFirestore(doc)).toList();
     } catch (e) {
       print('Error getting songs: $e');
       return [];
     }
   }
 
-  /// Tìm kiếm songs
+  /// Tìm kiếm songs (case-insensitive)
   Future<List<SongModel>> searchSongs(String query, {int limit = 20}) async {
     try {
+      final lowerQuery = query.toLowerCase().trim();
+      if (lowerQuery.isEmpty) return [];
+
+      // Search by tags (already lowercase)
       final snapshot = await _firestore
           .collection(FirestoreCollections.songs)
-          .where('tags', arrayContainsAny: query.toLowerCase().split(' '))
+          .where('tags', arrayContainsAny: lowerQuery.split(' '))
           .limit(limit)
           .get();
 
-      // Also search by title (case-insensitive)
-      final titleSnapshot = await _firestore
+      // Get all songs for title search (limited to reasonable amount)
+      final allSongsSnapshot = await _firestore
           .collection(FirestoreCollections.songs)
-          .where('title', isGreaterThanOrEqualTo: query)
-          .where('title', isLessThan: query + 'z')
-          .limit(limit)
+          .limit(100)
           .get();
 
-      final allDocs = {...snapshot.docs, ...titleSnapshot.docs};
-      return allDocs.map((doc) => SongModel.fromFirestore(doc)).toList();
+      // Client-side case-insensitive filtering
+      final titleMatches = allSongsSnapshot.docs
+          .where((doc) {
+            final song = SongModel.fromFirestore(doc);
+            return song.title.toLowerCase().contains(lowerQuery) ||
+                song.artistName.toLowerCase().contains(lowerQuery);
+          })
+          .take(limit)
+          .toList();
+
+      // Merge results và loại bỏ duplicates
+      final allDocs = <String, DocumentSnapshot>{};
+      for (var doc in snapshot.docs) {
+        allDocs[doc.id] = doc;
+      }
+      for (var doc in titleMatches) {
+        allDocs[doc.id] = doc;
+      }
+
+      return allDocs.values
+          .map((doc) => SongModel.fromFirestore(doc))
+          .take(limit)
+          .toList();
     } catch (e) {
       print('Error searching songs: $e');
       return [];
@@ -153,9 +182,10 @@ class DatabaseService {
     return query
         .orderBy('popularity', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => SongModel.fromFirestore(doc))
-            .toList());
+        .map(
+          (snapshot) =>
+              snapshot.docs.map((doc) => SongModel.fromFirestore(doc)).toList(),
+        );
   }
 
   // ==================== ALBUM OPERATIONS ====================
@@ -193,14 +223,16 @@ class DatabaseService {
         query = query.where('genres', arrayContains: genre);
       }
 
-      final snapshot = await query
-          .orderBy('releaseDate', descending: true)
-          .limit(limit)
-          .get();
+      // Chỉ orderBy nếu KHÔNG filter by genre (để tránh cần composite index)
+      if (genre == null) {
+        query = query.orderBy('releaseDate', descending: true);
+      }
 
-      return snapshot.docs
-          .map((doc) => AlbumModel.fromFirestore(doc))
-          .toList();
+      query = query.limit(limit);
+
+      final snapshot = await query.get();
+
+      return snapshot.docs.map((doc) => AlbumModel.fromFirestore(doc)).toList();
     } catch (e) {
       print('Error getting albums: $e');
       return [];
@@ -278,7 +310,10 @@ class DatabaseService {
   }
 
   /// Lấy songs của artist
-  Future<List<SongModel>> getArtistSongs(String artistId, {int limit = 20}) async {
+  Future<List<SongModel>> getArtistSongs(
+    String artistId, {
+    int limit = 20,
+  }) async {
     try {
       final snapshot = await _firestore
           .collection(FirestoreCollections.songs)
@@ -287,9 +322,7 @@ class DatabaseService {
           .limit(limit)
           .get();
 
-      return snapshot.docs
-          .map((doc) => SongModel.fromFirestore(doc))
-          .toList();
+      return snapshot.docs.map((doc) => SongModel.fromFirestore(doc)).toList();
     } catch (e) {
       print('Error getting artist songs: $e');
       return [];
@@ -367,7 +400,11 @@ class DatabaseService {
   }
 
   /// Thêm/xóa liked song
-  Future<void> toggleLikeSong(String userId, String songId, bool isLiked) async {
+  Future<void> toggleLikeSong(
+    String userId,
+    String songId,
+    bool isLiked,
+  ) async {
     try {
       final docRef = _firestore
           .collection(FirestoreCollections.userLikes)
@@ -399,26 +436,159 @@ class DatabaseService {
     int limit = 20,
   }) async {
     try {
-      Query query = _firestore.collection(FirestoreCollections.concerts);
+      Query query = _firestore
+          .collection(FirestoreCollections.concerts)
+          .where('status', isEqualTo: 'upcoming')
+          .limit(100);
 
-      if (artistId != null) {
-        query = query.where('artistId', isEqualTo: artistId);
+      final snapshot = await query.get();
+      var concerts = <ConcertModel>[];
+
+      for (var doc in snapshot.docs) {
+        try {
+          final concert = ConcertModel.fromFirestore(doc);
+          concerts.add(concert);
+        } catch (e) {
+          // Skip invalid concerts
+        }
       }
 
-      final snapshot = await query
-          .where('status', isEqualTo: 'upcoming')
-          .where('dateTime', isGreaterThan: Timestamp.now())
-          .orderBy('dateTime')
-          .limit(limit)
-          .get();
+      if (artistId != null) {
+        concerts = concerts.where((c) => c.artistId == artistId).toList();
+      }
 
-      return snapshot.docs
-          .map((doc) => ConcertModel.fromFirestore(doc))
-          .toList();
+      concerts.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+      return concerts.take(limit).toList();
     } catch (e) {
-      print('Error getting upcoming concerts: $e');
       return [];
     }
+  }
+
+  Future<List<ConcertModel>> getConcertsByLocation({
+    required String city,
+    int limit = 50,
+  }) async {
+    try {
+      print('📡 Đang query Firestore cho concerts ở city: $city');
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.concerts)
+          .where('status', isEqualTo: 'upcoming')
+          .limit(500)
+          .get();
+
+      print('📡 Đã fetch ${snapshot.docs.length} documents từ Firestore');
+      final filtered = <ConcertModel>[];
+      for (var doc in snapshot.docs) {
+        try {
+          final concert = ConcertModel.fromFirestore(doc);
+          final isInCity =
+              concert.venue.city.toLowerCase() == city.toLowerCase();
+          if (isInCity) {
+            filtered.add(concert);
+          }
+        } catch (e) {
+          print('⚠️ Skip invalid concert document: $e');
+        }
+      }
+
+      print('📡 Sau khi filter theo city "$city": ${filtered.length} concerts');
+      filtered.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+      final result = filtered.take(limit).toList();
+      print('✅ Trả về ${result.length} concerts (limit: $limit)');
+      return result;
+    } catch (e, stackTrace) {
+      print('❌ Lỗi trong getConcertsByLocation: $e');
+      print('📋 Stack trace: $stackTrace');
+      return [];
+    }
+  }
+
+  Future<List<ConcertModel>> getRecommendedConcerts({int limit = 20}) async {
+    try {
+      print('📡 Đang query Firestore cho recommended concerts');
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.concerts)
+          .where('status', isEqualTo: 'upcoming')
+          .limit(500)
+          .get();
+
+      print('📡 Đã fetch ${snapshot.docs.length} documents từ Firestore');
+      final concerts = <ConcertModel>[];
+      for (var doc in snapshot.docs) {
+        try {
+          final concert = ConcertModel.fromFirestore(doc);
+          concerts.add(concert);
+        } catch (e) {
+          print('⚠️ Skip invalid concert document: $e');
+        }
+      }
+
+      print('📡 Đã parse ${concerts.length} concerts thành công');
+      concerts.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+      final result = concerts.take(limit).toList();
+      print('✅ Trả về ${result.length} recommended concerts (limit: $limit)');
+      return result;
+    } catch (e, stackTrace) {
+      print('❌ Lỗi trong getRecommendedConcerts: $e');
+      print('📋 Stack trace: $stackTrace');
+      return [];
+    }
+  }
+
+  /// Tạo notification cho concert sắp tới
+  Future<void> createConcertNotification({
+    required String userId,
+    required String concertId,
+    required ConcertModel concert,
+    DateTime? scheduledFor,
+  }) async {
+    try {
+      final notificationData = {
+        'userId': userId,
+        'type': NotificationType.concertReminder.value,
+        'title': 'Concert Reminder: ${concert.artistName}',
+        'message':
+            '${concert.title} is coming up on ${_formatConcertDate(concert.dateTime)} at ${concert.venue.name}',
+        'imageUrl': concert.imageUrl,
+        'actionUrl': '/concerts/$concertId',
+        'read': false,
+        'data': {
+          'concertId': concertId,
+          'artistName': concert.artistName,
+          'venue': concert.venue.name,
+          'dateTime': Timestamp.fromDate(concert.dateTime),
+        },
+        'createdAt': FieldValue.serverTimestamp(),
+        if (scheduledFor != null)
+          'scheduledFor': Timestamp.fromDate(scheduledFor),
+      };
+
+      await _firestore
+          .collection(FirestoreCollections.notifications)
+          .add(notificationData);
+    } catch (e) {
+      print('Error creating concert notification: $e');
+      rethrow;
+    }
+  }
+
+  String _formatConcertDate(DateTime dateTime) {
+    final months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
+    final weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return '${weekdays[dateTime.weekday % 7]}, ${dateTime.day} ${months[dateTime.month - 1]}';
   }
 
   // ==================== PODCAST OPERATIONS ====================
@@ -440,6 +610,32 @@ class DatabaseService {
     }
   }
 
+  /// Lấy danh sách podcasts
+  Future<List<PodcastModel>> getPodcasts({
+    String? category,
+    int limit = 20,
+  }) async {
+    try {
+      Query query = _firestore.collection(FirestoreCollections.podcasts);
+
+      if (category != null) {
+        query = query.where('categories', arrayContains: category);
+      }
+
+      final snapshot = await query
+          .orderBy('followerCount', descending: true)
+          .limit(limit)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => PodcastModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error getting podcasts: $e');
+      return [];
+    }
+  }
+
   /// Lấy episodes của podcast
   Future<List<PodcastEpisodeModel>> getPodcastEpisodes(String podcastId) async {
     try {
@@ -454,6 +650,26 @@ class DatabaseService {
           .toList();
     } catch (e) {
       print('Error getting podcast episodes: $e');
+      return [];
+    }
+  }
+
+  /// Lấy recent podcast episodes (tất cả podcasts)
+  Future<List<PodcastEpisodeModel>> getRecentPodcastEpisodes({
+    int limit = 20,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.podcastEpisodes)
+          .orderBy('releaseDate', descending: true)
+          .limit(limit)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => PodcastEpisodeModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error getting recent podcast episodes: $e');
       return [];
     }
   }
@@ -482,5 +698,277 @@ class DatabaseService {
       rethrow;
     }
   }
-}
 
+  // ==================== PODCAST DOWNLOADS OPERATIONS ====================
+
+  /// Lấy thông tin downloads của user
+  Future<UserDownloadsModel?> getUserDownloads(String userId) async {
+    try {
+      final doc = await _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId)
+          .get();
+      if (doc.exists) {
+        return UserDownloadsModel.fromFirestore(doc);
+      }
+      return null;
+    } catch (e) {
+      print('Error getting user downloads: $e');
+      return null;
+    }
+  }
+
+  /// Thêm podcast episode vào downloads
+  Future<void> addPodcastEpisodeDownload(
+    String userId,
+    String episodeId,
+    String podcastId,
+    String localPath,
+    int fileSize,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      UserDownloadsModel downloads;
+
+      if (doc.exists) {
+        downloads = UserDownloadsModel.fromFirestore(doc);
+
+        // Kiểm tra xem episode đã được download chưa
+        final existingIndex = downloads.downloadedPodcastEpisodes.indexWhere(
+          (e) => e.episodeId == episodeId,
+        );
+
+        if (existingIndex != -1) {
+          // Episode đã tồn tại, không cần thêm lại
+          return;
+        }
+
+        // Thêm episode mới
+        final updatedEpisodes = [
+          ...downloads.downloadedPodcastEpisodes,
+          DownloadedPodcastEpisode(
+            episodeId: episodeId,
+            podcastId: podcastId,
+            downloadedAt: DateTime.now(),
+            localPath: localPath,
+            fileSize: fileSize,
+          ),
+        ];
+
+        downloads = downloads.copyWith(
+          downloadedPodcastEpisodes: updatedEpisodes,
+          storageUsed: downloads.storageUsed + fileSize,
+          updatedAt: DateTime.now(),
+        );
+      } else {
+        // Tạo mới
+        downloads = UserDownloadsModel(
+          userId: userId,
+          downloadedPodcastEpisodes: [
+            DownloadedPodcastEpisode(
+              episodeId: episodeId,
+              podcastId: podcastId,
+              downloadedAt: DateTime.now(),
+              localPath: localPath,
+              fileSize: fileSize,
+            ),
+          ],
+          storageUsed: fileSize,
+          updatedAt: DateTime.now(),
+        );
+      }
+
+      await docRef.set(downloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã thêm podcast episode vào downloads: $episodeId');
+    } catch (e) {
+      print('Error adding podcast episode download: $e');
+      rethrow;
+    }
+  }
+
+  /// Xóa podcast episode khỏi downloads
+  Future<void> removePodcastEpisodeDownload(
+    String userId,
+    String episodeId,
+    int fileSize,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(FirestoreCollections.userDownloads)
+          .doc(userId);
+
+      final doc = await docRef.get();
+      if (!doc.exists) {
+        return;
+      }
+
+      final downloads = UserDownloadsModel.fromFirestore(doc);
+      final updatedEpisodes = downloads.downloadedPodcastEpisodes
+          .where((e) => e.episodeId != episodeId)
+          .toList();
+
+      final updatedDownloads = downloads.copyWith(
+        downloadedPodcastEpisodes: updatedEpisodes,
+        storageUsed: (downloads.storageUsed - fileSize)
+            .clamp(0, double.infinity)
+            .toInt(),
+        updatedAt: DateTime.now(),
+      );
+
+      await docRef.set(updatedDownloads.toFirestore(), SetOptions(merge: true));
+      print('✅ Đã xóa podcast episode khỏi downloads: $episodeId');
+    } catch (e) {
+      print('Error removing podcast episode download: $e');
+      rethrow;
+    }
+  }
+
+  /// Kiểm tra xem episode đã được download chưa (trong Firestore)
+  Future<bool> isPodcastEpisodeDownloaded(
+    String userId,
+    String episodeId,
+  ) async {
+    try {
+      final downloads = await getUserDownloads(userId);
+      if (downloads == null) {
+        return false;
+      }
+
+      return downloads.downloadedPodcastEpisodes.any(
+        (e) => e.episodeId == episodeId,
+      );
+    } catch (e) {
+      print('Error checking podcast episode download status: $e');
+      return false;
+    }
+  }
+
+  // ==================== SEARCH OPERATIONS ====================
+
+  /// Tìm kiếm albums (case-insensitive)
+  Future<List<AlbumModel>> searchAlbums(String query, {int limit = 20}) async {
+    try {
+      final lowerQuery = query.toLowerCase().trim();
+      if (lowerQuery.isEmpty) return [];
+
+      // Get all albums (limited to reasonable amount)
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.albums)
+          .limit(100)
+          .get();
+
+      // Client-side case-insensitive filtering
+      final matches = snapshot.docs
+          .where((doc) {
+            final album = AlbumModel.fromFirestore(doc);
+            return album.title.toLowerCase().contains(lowerQuery) ||
+                album.artistName.toLowerCase().contains(lowerQuery);
+          })
+          .take(limit)
+          .toList();
+
+      return matches.map((doc) => AlbumModel.fromFirestore(doc)).toList();
+    } catch (e) {
+      print('Error searching albums: $e');
+      return [];
+    }
+  }
+
+  /// Tìm kiếm artists
+  Future<List<ArtistModel>> searchArtists(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      if (query.trim().isEmpty) return [];
+
+      // Tìm theo name
+      final nameSnapshot = await _firestore
+          .collection(FirestoreCollections.artists)
+          .where('name', isGreaterThanOrEqualTo: query)
+          .where('name', isLessThan: query + 'z')
+          .limit(limit)
+          .get();
+
+      return nameSnapshot.docs
+          .map((doc) => ArtistModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error searching artists: $e');
+      return [];
+    }
+  }
+
+  /// Tìm kiếm playlists (chỉ public playlists)
+  Future<List<PlaylistModel>> searchPlaylists(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      if (query.trim().isEmpty) return [];
+
+      final lowerQuery = query.toLowerCase();
+
+      // Tìm theo title và chỉ lấy public playlists
+      final titleSnapshot = await _firestore
+          .collection(FirestoreCollections.playlists)
+          .where('isPublic', isEqualTo: true)
+          .where('title', isGreaterThanOrEqualTo: query)
+          .where('title', isLessThan: query + 'z')
+          .limit(limit)
+          .get();
+
+      // Tìm theo tags
+      final tagsSnapshot = await _firestore
+          .collection(FirestoreCollections.playlists)
+          .where('isPublic', isEqualTo: true)
+          .where('tags', arrayContainsAny: lowerQuery.split(' '))
+          .limit(limit)
+          .get();
+
+      // Merge results và loại bỏ duplicates
+      final allDocs = <String, DocumentSnapshot>{};
+      for (var doc in titleSnapshot.docs) {
+        allDocs[doc.id] = doc;
+      }
+      for (var doc in tagsSnapshot.docs) {
+        allDocs[doc.id] = doc;
+      }
+
+      return allDocs.values
+          .map((doc) => PlaylistModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error searching playlists: $e');
+      return [];
+    }
+  }
+
+  /// Lấy danh sách tất cả các thể loại có sẵn
+  Future<List<String>> getAvailableGenres() async {
+    try {
+      // Lấy tất cả songs và aggregate genres
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.songs)
+          .limit(500) // Giới hạn để tối ưu performance
+          .get();
+
+      final genresSet = <String>{};
+      for (var doc in snapshot.docs) {
+        final song = SongModel.fromFirestore(doc);
+        genresSet.addAll(song.genres);
+      }
+
+      // Convert set thành list và sort
+      final genresList = genresSet.toList()..sort();
+      return genresList;
+    } catch (e) {
+      print('Error getting available genres: $e');
+      return [];
+    }
+  }
+}

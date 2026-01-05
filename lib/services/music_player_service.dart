@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import '../database/models/song_model.dart';
@@ -58,9 +59,12 @@ class MusicPlayerService {
         throw Exception('Audio URL is empty for song: ${song.title}');
       }
       
-      // Validate URL format
+      // Validate URL format - cho phép cả HTTP và file path
       final uri = Uri.tryParse(song.audioUrl);
-      if (uri == null || (!uri.hasScheme || (!uri.scheme.startsWith('http')))) {
+      final isLocalFile = song.audioUrl.startsWith('/') || song.audioUrl.startsWith('file://');
+      final isHttpUrl = uri != null && uri.hasScheme && (uri.scheme.startsWith('http'));
+      
+      if (!isLocalFile && !isHttpUrl) {
         throw Exception('Invalid audio URL format: ${song.audioUrl}');
       }
       
@@ -104,10 +108,11 @@ class MusicPlayerService {
         normalizedUrl = song.audioUrl;
       }
       
-      // Test URL accessibility trước khi load vào player (optional check)
-      print('🔍 Đang kiểm tra URL...');
-      print('📋 Normalized URL: $normalizedUrl');
-      try {
+      // Test URL accessibility trước khi load vào player (chỉ cho HTTP URLs)
+      if (!isLocalFile) {
+        print('🔍 Đang kiểm tra URL...');
+        print('📋 Normalized URL: $normalizedUrl');
+        try {
         // Thử GET với range request (như audio player sẽ làm)
         final uri = Uri.parse(normalizedUrl);
         final response = await http.get(
@@ -191,25 +196,46 @@ class MusicPlayerService {
           // Continue - có thể HEAD không được hỗ trợ nhưng GET vẫn work
         }
       }
+      } // End if (!isLocalFile)
       
       // Set audio source với timeout và better error handling
       print('🎵 Đang load audio source vào player...');
-      print('🔗 Final URL: $normalizedUrl');
+      print('🔗 Final URL/Path: $normalizedUrl');
       
       try {
-        await _audioPlayer.setUrl(
-          normalizedUrl,
-          headers: {
-            'User-Agent': 'Flutter-App',
-            'Accept': '*/*',
-          },
-        ).timeout(
-          const Duration(seconds: 20),
-          onTimeout: () {
-            print('⏱️ Timeout khi set audio source sau 20 giây');
-            throw Exception('Timeout loading audio URL. URL might be invalid or unreachable.');
-          },
-        );
+        // Sử dụng setFilePath cho local file, setUrl cho HTTP URL
+        if (isLocalFile) {
+          // Loại bỏ file:// prefix nếu có
+          final filePath = normalizedUrl.replaceFirst('file://', '');
+          final file = File(filePath);
+          
+          if (!await file.exists()) {
+            throw Exception('Local file not found: $filePath');
+          }
+          
+          await _audioPlayer.setFilePath(filePath).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              print('⏱️ Timeout khi set audio file path');
+              throw Exception('Timeout loading audio file.');
+            },
+          );
+          print('📁 Đang phát từ local file');
+        } else {
+          await _audioPlayer.setUrl(
+            normalizedUrl,
+            headers: {
+              'User-Agent': 'Flutter-App',
+              'Accept': '*/*',
+            },
+          ).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              print('⏱️ Timeout khi set audio source sau 20 giây');
+              throw Exception('Timeout loading audio URL. URL might be invalid or unreachable.');
+            },
+          );
+        }
         
         print('✅ Audio source đã được set thành công');
         
