@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../database/database_service.dart';
+import '../database/firebase_setup.dart';
 import '../database/models/album_model.dart';
 import '../database/models/artist_model.dart';
 import '../database/models/playlist_model.dart';
@@ -82,6 +83,27 @@ class HomeProvider extends ChangeNotifier {
       // Build a list of recommended artists based on songs collection
       _madeForYouArtists = [];
 
+      // Fetch artist images mapping from `artistsImage` collection (idArtist -> urlImage)
+      final Map<String, String> artistImageMap = {};
+      try {
+        final snap = await FirebaseSetup.firestore.collection('artistsImage').get();
+        for (var doc in snap.docs) {
+          final data = doc.data();
+          final idArtist = (data['idArtist'] as String?)?.trim();
+          final url = (data['urlImage'] as String?);
+          if (idArtist != null && idArtist.isNotEmpty && url != null && url.isNotEmpty) {
+            artistImageMap[idArtist] = url;
+          }
+        }
+        print('📸 Loaded artistsImage entries (by id): ${artistImageMap.length}');
+        if (artistImageMap.isNotEmpty) {
+          final sample = artistImageMap.entries.take(8).map((e) => '${e.key}=>${e.value}').join(', ');
+          print('📸 artistsImage sample (id=>url): $sample');
+        }
+      } catch (e) {
+        // ignore if collection missing
+      }
+
       // Fetch a larger sample of songs and group them by artistName/artistId
       final songsSample = await _databaseService.getSongs(limit: 200);
       final Map<String, List<SongModel>> groups = {};
@@ -100,6 +122,10 @@ class HomeProvider extends ChangeNotifier {
         final key = entry.key;
         final songs = entry.value;
 
+        if (songs.length > 1) {
+          print('🎶 Group: $key -> ${songs.length} songs (example: ${songs.first.title})');
+        }
+
         // Try to fetch an artist document when key looks like an ID (we can't reliably know,
         // but attempting will succeed when artist doc exists).
         ArtistModel? artistDoc;
@@ -110,15 +136,30 @@ class HomeProvider extends ChangeNotifier {
         }
 
         if (artistDoc != null) {
+          // If artist doc missing image, try to fill from artistsImage map by name
+          if ((artistDoc.imageUrl == null || artistDoc.imageUrl!.isEmpty) &&
+              artistImageMap.containsKey(artistDoc.id)) {
+            final usedUrl = artistImageMap[artistDoc.id];
+            artistDoc = artistDoc.copyWith(imageUrl: usedUrl);
+            print('🖼️ Using artistsImage (by id) for artist "${artistDoc.name}" (id=${artistDoc.id}): $usedUrl');
+          }
           _madeForYouArtists.add(artistDoc);
         } else {
           // Create fallback using song metadata (artistName from first song)
           final first = songs.first;
           final artistName = first.artistName ?? 'Unknown Artist';
+          // Prefer artworkUrl from song, else try artistsImage map by name
+          String? imageUrl = first.artworkUrl;
+          // If song carries artistId and artistsImage has mapping by id, prefer that
+          if ((imageUrl == null || imageUrl.isEmpty) && first.artistId != null && first.artistId!.isNotEmpty && artistImageMap.containsKey(first.artistId)) {
+            imageUrl = artistImageMap[first.artistId!];
+            print('🖼️ Using artistsImage (by id) for fallback artist "$artistName" (id=${first.artistId}): $imageUrl');
+          }
+
           final fallback = ArtistModel(
             id: key,
             name: artistName,
-            imageUrl: first.artworkUrl,
+            imageUrl: imageUrl,
             bio: null,
             genres: [],
             monthlyListeners: 0,
@@ -133,6 +174,10 @@ class HomeProvider extends ChangeNotifier {
       }
 
       print('👩‍🎤 Made for you artists (from songs): ${_madeForYouArtists.length}');
+      // Detailed debug: list artists with image urls
+      for (var a in _madeForYouArtists) {
+        print('👩‍🎤 Artist entry -> id: ${a.id}, name: ${a.name}, imageUrl: ${a.imageUrl}');
+      }
     } catch (e) {
       print("Error loading home data: $e");
     } finally {

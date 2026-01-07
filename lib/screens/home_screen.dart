@@ -247,7 +247,14 @@ class HomeScreen extends StatelessWidget {
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(8),
                                         child: artist.imageUrl != null
-                                            ? Image.network(artist.imageUrl!, fit: BoxFit.cover)
+                                            ? Image.network(
+                                                artist.imageUrl!,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) {
+                                                  print('❌ Image load failed for artist id=${artist.id}, url=${artist.imageUrl}: $error');
+                                                  return const Icon(Icons.person, color: Colors.white38, size: 40);
+                                                },
+                                              )
                                             : const Icon(Icons.person, color: Colors.white38, size: 40),
                                       ),
                                     ),
