@@ -226,7 +226,7 @@ class DatabaseService {
       query = query.limit(limit);
 
       final snapshot = await query.get();
-      
+
       print('📀 Fetched ${snapshot.docs.length} albums from Firestore');
 
       return snapshot.docs.map((doc) => AlbumModel.fromFirestore(doc)).toList();
@@ -326,6 +326,25 @@ class DatabaseService {
     }
   }
 
+  /// Tìm artist theo tên chính xác
+  Future<ArtistModel?> findArtistByName(String name) async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.artists)
+          .where('name', isEqualTo: name)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return ArtistModel.fromFirestore(snapshot.docs.first);
+      }
+      return null;
+    } catch (e) {
+      print('Error finding artist by name: $e');
+      return null;
+    }
+  }
+
   // ==================== PLAYLIST OPERATIONS ====================
 
   /// Lấy playlist theo ID
@@ -373,6 +392,43 @@ class DatabaseService {
     } catch (e) {
       print('Error creating playlist: $e');
       rethrow;
+    }
+  }
+
+  /// Lấy songs trong playlist
+  Future<List<SongModel>> getPlaylistSongs(String playlistId) async {
+    try {
+      final playlist = await getPlaylist(playlistId);
+      if (playlist == null || playlist.songIds.isEmpty) {
+        return [];
+      }
+
+      // Firestore 'in' query limit is 10, so we need to batch
+      final List<SongModel> songs = [];
+      for (int i = 0; i < playlist.songIds.length; i += 10) {
+        final batch = playlist.songIds.sublist(
+          i,
+          i + 10 > playlist.songIds.length ? playlist.songIds.length : i + 10,
+        );
+        final snapshot = await _firestore
+            .collection(FirestoreCollections.songs)
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+        songs.addAll(
+          snapshot.docs.map((doc) => SongModel.fromFirestore(doc)).toList(),
+        );
+      }
+
+      // Giữ nguyên thứ tự trong playlist
+      final songMap = {for (var song in songs) song.id: song};
+      return playlist.songIds
+          .map((id) => songMap[id])
+          .where((song) => song != null)
+          .cast<SongModel>()
+          .toList();
+    } catch (e) {
+      print('Error getting playlist songs: $e');
+      return [];
     }
   }
 
@@ -678,7 +734,7 @@ class DatabaseService {
           .collection(FirestoreCollections.podcastEpisodes)
           .doc(episodeId)
           .get();
-      
+
       if (doc.exists) {
         return PodcastEpisodeModel.fromFirestore(doc);
       }
@@ -969,19 +1025,14 @@ class DatabaseService {
   }
 
   /// Kiểm tra xem song đã được download chưa (trong Firestore)
-  Future<bool> isSongDownloaded(
-    String userId,
-    String songId,
-  ) async {
+  Future<bool> isSongDownloaded(String userId, String songId) async {
     try {
       final downloads = await getUserDownloads(userId);
       if (downloads == null) {
         return false;
       }
 
-      return downloads.downloadedSongs.any(
-        (s) => s.songId == songId,
-      );
+      return downloads.downloadedSongs.any((s) => s.songId == songId);
     } catch (e) {
       print('Error checking song download status: $e');
       return false;
@@ -1014,7 +1065,9 @@ class DatabaseService {
 
         if (existingIndex != -1) {
           // Album đã tồn tại, cập nhật songIds
-          final updatedAlbums = List<DownloadedAlbum>.from(downloads.downloadedAlbums);
+          final updatedAlbums = List<DownloadedAlbum>.from(
+            downloads.downloadedAlbums,
+          );
           updatedAlbums[existingIndex] = DownloadedAlbum(
             albumId: albumId,
             downloadedAt: updatedAlbums[existingIndex].downloadedAt,
@@ -1065,10 +1118,7 @@ class DatabaseService {
   }
 
   /// Xóa album khỏi downloads
-  Future<void> removeAlbumDownload(
-    String userId,
-    String albumId,
-  ) async {
+  Future<void> removeAlbumDownload(String userId, String albumId) async {
     try {
       final docRef = _firestore
           .collection(FirestoreCollections.userDownloads)
@@ -1098,19 +1148,14 @@ class DatabaseService {
   }
 
   /// Kiểm tra xem album đã được download chưa (trong Firestore)
-  Future<bool> isAlbumDownloaded(
-    String userId,
-    String albumId,
-  ) async {
+  Future<bool> isAlbumDownloaded(String userId, String albumId) async {
     try {
       final downloads = await getUserDownloads(userId);
       if (downloads == null) {
         return false;
       }
 
-      return downloads.downloadedAlbums.any(
-        (a) => a.albumId == albumId,
-      );
+      return downloads.downloadedAlbums.any((a) => a.albumId == albumId);
     } catch (e) {
       print('Error checking album download status: $e');
       return false;

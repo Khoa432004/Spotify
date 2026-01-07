@@ -7,10 +7,58 @@ import 'library_screen.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'podcasts_screen.dart';
+import '../database/firebase_setup.dart';
+import '../database/models/album_model.dart';
 
 /// Màn hình danh sách Albums trong Library
-class AlbumsListScreen extends StatelessWidget {
+class AlbumsListScreen extends StatefulWidget {
   const AlbumsListScreen({super.key});
+
+  @override
+  State<AlbumsListScreen> createState() => _AlbumsListScreenState();
+}
+
+class _AlbumsListScreenState extends State<AlbumsListScreen> {
+  List<AlbumModel> _albums = [];
+  bool _isLoading = true;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAlbums();
+  }
+
+  Future<void> _loadAlbums() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final albums = await FirebaseSetup.databaseService.getAlbums(limit: 100);
+      setState(() {
+        _albums = albums;
+        _isLoading = false;
+      });
+      print('📀 Loaded ${albums.length} albums from database');
+    } catch (e) {
+      print('❌ Lỗi khi load albums: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  List<AlbumModel> get _filteredAlbums {
+    if (_searchQuery.isEmpty) {
+      return _albums;
+    }
+    final query = _searchQuery.toLowerCase();
+    return _albums.where((album) {
+      return album.title.toLowerCase().contains(query) ||
+          album.artistName.toLowerCase().contains(query);
+    }).toList();
+  }
 
   // Helper function to calculate text width
   static double _getTextWidth(
@@ -35,65 +83,11 @@ class AlbumsListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, String>> albums = [
-      {
-        'name': 'Dive',
-        'artist': 'Tycho',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/a52fb990-2fc6-4036-b2a2-af1d9b89e7e9',
-      },
-      {
-        'name': 'Presence',
-        'artist': 'Petit Biscuit',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/b4e13d4d-0b14-4c6d-923b-88fd31f8b52f',
-      },
-      {
-        'name': 'What You Don\'t See',
-        'artist': 'The Story So Far',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/fb7fd739-5bce-4424-a0f3-6e82ba0c0ef0',
-      },
-      {
-        'name': 'Awake',
-        'artist': 'Illenium',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/f392827a-dd59-4d5e-83e8-f5b996ee346b',
-      },
-      {
-        'name': 'Days To Come',
-        'artist': 'Seven Lions',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/0bac6d60-0494-4f6d-b7db-4d563c56bb11',
-      },
-      {
-        'name': 'Shapeshifter',
-        'artist': 'Knuckle Puck',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/1b2d200b-f11d-48f7-a026-cf208a8c68ea',
-      },
-      {
-        'name': 'Awake',
-        'artist': 'Tycho',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/8b7cb5c5-4936-4612-ad8a-190441bb2362',
-      },
-      {
-        'name': 'Mothership',
-        'artist': 'Dance Gavin Dance',
-        'imageUrl':
-            'https://www.figma.com/api/mcp/asset/15392f0e-5fe6-4805-8544-7653b59e1e37',
-      },
-    ];
-
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          const MiniPlayer(),
-          _buildBottomNavigationBar(context),
-        ],
+        children: [const MiniPlayer(), _buildBottomNavigationBar(context)],
       ),
       body: SafeArea(
         child: Column(
@@ -246,13 +240,31 @@ class AlbumsListScreen extends StatelessWidget {
                             size: 15.4,
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            'Find in albums',
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: -0.23,
+                          Expanded(
+                            child: TextField(
+                              style: TextStyle(
+                                color: Colors.grey[400],
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.23,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Find in albums',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: -0.23,
+                                ),
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _searchQuery = value;
+                                });
+                              },
                             ),
                           ),
                         ],
@@ -286,85 +298,99 @@ class AlbumsListScreen extends StatelessWidget {
 
             // Album list
             Expanded(
-              child: ListView.builder(
-                clipBehavior: Clip.hardEdge,
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                itemCount: albums.length,
-                itemBuilder: (context, index) {
-                  final album = albums[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0),
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AlbumDetailScreen(
-                              albumName: album['name']!,
-                              artistName: album['artist']!,
-                              albumArt: album['imageUrl'],
-                            ),
-                          ),
-                        );
-                      },
-                      child: Row(
-                        children: [
-                          // Album artwork
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[800],
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: album['imageUrl'] != null
-                                  ? Image.network(
-                                      album['imageUrl']!,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
-                                            return Container(
-                                              color: Colors.grey[800],
-                                            );
-                                          },
-                                    )
-                                  : Container(color: Colors.grey[800]),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Album info
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  album['name']!,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.28,
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredAlbums.isEmpty
+                  ? Center(
+                      child: Text(
+                        _searchQuery.isEmpty
+                            ? 'Chưa có album nào'
+                            : 'Không tìm thấy album',
+                        style: TextStyle(color: Colors.grey[400]),
+                      ),
+                    )
+                  : ListView.builder(
+                      clipBehavior: Clip.hardEdge,
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      itemCount: _filteredAlbums.length,
+                      itemBuilder: (context, index) {
+                        final album = _filteredAlbums[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => AlbumDetailScreen(
+                                    albumName: album.title,
+                                    artistName: album.artistName,
+                                    albumArt: album.artworkUrl,
+                                    albumId: album
+                                        .id, // Truyền albumId để load songs
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  album['artist']!,
-                                  style: TextStyle(
-                                    color: Colors.grey[400],
-                                    fontSize: 11,
+                              );
+                            },
+                            child: Row(
+                              children: [
+                                // Album artwork
+                                Container(
+                                  width: 64,
+                                  height: 64,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[800],
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: album.artworkUrl != null
+                                        ? Image.network(
+                                            album.artworkUrl!,
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                (context, error, stackTrace) {
+                                                  return Container(
+                                                    color: Colors.grey[800],
+                                                  );
+                                                },
+                                          )
+                                        : Container(color: Colors.grey[800]),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Album info
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        album.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -0.28,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        album.artistName,
+                                        style: TextStyle(
+                                          color: Colors.grey[400],
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),

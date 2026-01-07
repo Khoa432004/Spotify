@@ -320,10 +320,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
           ),
           bottomNavigationBar: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              const MiniPlayer(),
-              _buildBottomNavigationBar(context),
-            ],
+            children: [const MiniPlayer(), _buildBottomNavigationBar(context)],
           ),
         );
       },
@@ -421,6 +418,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                       .split(',')[0]
                       .trim(),
                   albumArt: item['imageUrl'],
+                  albumId: item['id'], // Truyền albumId nếu có
                 ),
               ),
             );
@@ -493,9 +491,16 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             searchProvider.createRecentSearchFromSong(song),
           );
           // Play song
-          final player = Provider.of<MusicPlayerProvider>(context, listen: false);
+          final player = Provider.of<MusicPlayerProvider>(
+            context,
+            listen: false,
+          );
           try {
-            await player.playSong(song, queue: searchProvider.songs, initialIndex: searchProvider.songs.indexOf(song));
+            await player.playSong(
+              song,
+              queue: searchProvider.songs,
+              initialIndex: searchProvider.songs.indexOf(song),
+            );
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const PlayerScreen()),
@@ -632,6 +637,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                 albumName: album.title,
                 artistName: album.artistName,
                 albumArt: album.artworkUrl,
+                albumId: album.id, // Truyền albumId để load songs
               ),
             ),
           );
