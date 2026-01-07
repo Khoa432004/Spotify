@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/database_service.dart';
 import '../database/models/album_model.dart';
+import '../database/models/artist_model.dart';
 import '../database/models/playlist_model.dart';
 import '../database/models/song_model.dart';
 import '../database/models/user_model.dart';
@@ -11,11 +12,15 @@ class HomeProvider extends ChangeNotifier {
   List<PlaylistModel> _quickAccessPlaylists = [];
   List<AlbumModel> _recentlyPlayedAlbums = [];
   List<AlbumModel> _madeForYouAlbums = [];
+  List<SongModel> _songsByArtist = [];
   bool _isLoading = true;
+  List<ArtistModel> _madeForYouArtists = [];
 
   List<PlaylistModel> get quickAccessPlaylists => _quickAccessPlaylists;
   List<AlbumModel> get recentlyPlayedAlbums => _recentlyPlayedAlbums;
   List<AlbumModel> get madeForYouAlbums => _madeForYouAlbums;
+  List<SongModel> get songsByArtist => _songsByArtist;
+  List<ArtistModel> get madeForYouArtists => _madeForYouArtists;
   bool get isLoading => _isLoading;
 
   HomeProvider() {
@@ -65,6 +70,69 @@ class HomeProvider extends ChangeNotifier {
       _madeForYouAlbums = await _databaseService.getAlbums(limit: 5);
       print('🎵 Made for you albums: ${_madeForYouAlbums.length}');
       // In a real app we would filter defaults.
+
+      // Fetch songs for a recommended artist (take artist from first made-for-you album)
+      if (_madeForYouAlbums.isNotEmpty) {
+        final artistId = _madeForYouAlbums.first.artistId;
+        if (artistId != null && artistId.isNotEmpty) {
+          _songsByArtist = await _databaseService.getArtistSongs(artistId, limit: 10);
+          print('🎤 Songs by artist (${artistId}): ${_songsByArtist.length}');
+        }
+      }
+      // Build a list of recommended artists based on songs collection
+      _madeForYouArtists = [];
+
+      // Fetch a larger sample of songs and group them by artistName/artistId
+      final songsSample = await _databaseService.getSongs(limit: 200);
+      final Map<String, List<SongModel>> groups = {};
+
+      for (var song in songsSample) {
+        final key = (song.artistId != null && song.artistId!.isNotEmpty)
+            ? song.artistId!
+            : (song.artistName?.trim().isNotEmpty == true ? song.artistName!.trim() : null);
+
+        if (key == null) continue;
+
+        groups.putIfAbsent(key, () => []).add(song);
+      }
+
+      for (var entry in groups.entries) {
+        final key = entry.key;
+        final songs = entry.value;
+
+        // Try to fetch an artist document when key looks like an ID (we can't reliably know,
+        // but attempting will succeed when artist doc exists).
+        ArtistModel? artistDoc;
+        try {
+          artistDoc = await _databaseService.getArtist(key);
+        } catch (_) {
+          artistDoc = null;
+        }
+
+        if (artistDoc != null) {
+          _madeForYouArtists.add(artistDoc);
+        } else {
+          // Create fallback using song metadata (artistName from first song)
+          final first = songs.first;
+          final artistName = first.artistName ?? 'Unknown Artist';
+          final fallback = ArtistModel(
+            id: key,
+            name: artistName,
+            imageUrl: first.artworkUrl,
+            bio: null,
+            genres: [],
+            monthlyListeners: 0,
+            followerCount: 0,
+            albumIds: [],
+            songIds: songs.map((s) => s.id).toList(),
+            verified: false,
+            createdAt: DateTime.now(),
+          );
+          _madeForYouArtists.add(fallback);
+        }
+      }
+
+      print('👩‍🎤 Made for you artists (from songs): ${_madeForYouArtists.length}');
     } catch (e) {
       print("Error loading home data: $e");
     } finally {

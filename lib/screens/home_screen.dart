@@ -6,11 +6,13 @@ import '../widgets/playlist_card.dart';
 import '../widgets/album_card.dart';
 import '../widgets/section_header.dart';
 import '../widgets/mini_player.dart';
+import '../providers/music_player_provider.dart';
 import 'concerts_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
 import 'firebase_test_screen.dart';
 import 'album_detail_screen.dart';
+import 'artist_songs_screen.dart';
 
 /// Màn hình Home - Hiển thị các playlist, album gần đây và đề xuất
 class HomeScreen extends StatelessWidget {
@@ -207,6 +209,68 @@ class HomeScreen extends StatelessWidget {
                         },
                       ),
                     ),
+                    const SizedBox(height: 16),
+
+                    // Artists for Made for You
+                    if (homeProvider.madeForYouArtists.isNotEmpty) ...[
+                      const SectionHeader(title: 'More from these artists'),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 120,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          itemCount: homeProvider.madeForYouArtists.length,
+                          itemBuilder: (context, aIndex) {
+                            final artist = homeProvider.madeForYouArtists[aIndex];
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 16.0),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ArtistSongsScreen(artist: artist),
+                                    ),
+                                  );
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      width: 88,
+                                      height: 88,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: Colors.grey[800],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: artist.imageUrl != null
+                                            ? Image.network(artist.imageUrl!, fit: BoxFit.cover)
+                                            : const Icon(Icons.person, color: Colors.white38, size: 40),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    SizedBox(
+                                      width: 88,
+                                      child: Text(
+                                        artist.name,
+                                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                   ],
 
                   const SizedBox(height: 100),
