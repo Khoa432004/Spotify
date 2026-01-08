@@ -7,6 +7,9 @@ import 'podcasts_screen.dart';
 import 'downloads_screen.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
+import 'artist_detail_screen.dart';
+import '../database/firebase_setup.dart';
+import '../database/models/artist_model.dart';
 
 /// Màn hình Library - Hiển thị thư viện cá nhân với playlists, artists, albums
 class LibraryScreen extends StatefulWidget {
@@ -51,6 +54,38 @@ class _LibraryScreenState extends State<LibraryScreen> {
       'icon': 'playlist',
     },
   ];
+
+  // Dữ liệu cho artists
+  List<ArtistModel> _artists = [];
+  bool _isLoadingArtists = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadArtists();
+  }
+
+  Future<void> _loadArtists() async {
+    final userId = FirebaseSetup.currentUserId;
+    if (userId == null) return;
+
+    setState(() {
+      _isLoadingArtists = true;
+    });
+
+    try {
+      final artists = await FirebaseSetup.databaseService.getLikedArtists(userId);
+      setState(() {
+        _artists = artists;
+        _isLoadingArtists = false;
+      });
+    } catch (e) {
+      print('Error loading artists: $e');
+      setState(() {
+        _isLoadingArtists = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +159,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           _selectedFilter = filter;
                         });
 
-                        // Navigate to corresponding screen
+                        // Navigate to corresponding screen only for some filters
                         if (filter == 'Albums') {
                           Navigator.push(
                             context,
@@ -133,12 +168,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             ),
                           );
                         } else if (filter == 'Artists') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const ArtistsListScreen(),
-                            ),
-                          );
+                          // Artists will be shown in the same screen
+                          _loadArtists();
                         } else if (filter == 'Podcasts') {
                           Navigator.push(
                             context,
@@ -190,33 +221,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
             const SizedBox(height: 16),
 
-            // List of playlists
+            // List of playlists or artists based on selected filter
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                itemCount: _playlists.length,
-                itemBuilder: (context, index) {
-                  final playlist = _playlists[index];
-                  final isLikedSongs = playlist['icon'] == 'favorite';
-                  return GestureDetector(
-                    onTap: isLikedSongs
-                        ? () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const LikedSongsScreen(),
-                              ),
-                            );
-                          }
-                        : null,
-                    child: _buildLibraryItem(
-                      title: playlist['title']!,
-                      subtitle: playlist['subtitle']!,
-                      isLikedSongs: isLikedSongs,
-                    ),
-                  );
-                },
-              ),
+              child: _selectedFilter == 'Artists'
+                  ? _buildArtistsList()
+                  : _buildPlaylistsList(),
             ),
           ],
         ),
@@ -348,6 +357,171 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build playlists list
+  Widget _buildPlaylistsList() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      itemCount: _playlists.length,
+      itemBuilder: (context, index) {
+        final playlist = _playlists[index];
+        final isLikedSongs = playlist['icon'] == 'favorite';
+        return GestureDetector(
+          onTap: isLikedSongs
+              ? () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LikedSongsScreen(),
+                    ),
+                  );
+                }
+              : null,
+          child: _buildLibraryItem(
+            title: playlist['title']!,
+            subtitle: playlist['subtitle']!,
+            isLikedSongs: isLikedSongs,
+          ),
+        );
+      },
+    );
+  }
+
+  /// Build artists list
+  Widget _buildArtistsList() {
+    if (_isLoadingArtists) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFF1DB954),
+        ),
+      );
+    }
+
+    if (_artists.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.person_outline,
+                size: 64,
+                color: Colors.grey[600],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No artists yet',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Follow artists to see them here',
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      itemCount: _artists.length,
+      itemBuilder: (context, index) {
+        final artist = _artists[index];
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ArtistDetailScreen(
+                  artistName: artist.name,
+                  artistImage: artist.imageUrl,
+                  artistId: artist.id,
+                ),
+              ),
+            );
+          },
+          child: _buildArtistItem(artist),
+        );
+      },
+    );
+  }
+
+  /// Build artist item
+  Widget _buildArtistItem(ArtistModel artist) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Row(
+        children: [
+          // Artist image
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.grey[800],
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: artist.imageUrl != null && artist.imageUrl!.isNotEmpty
+                  ? Image.network(
+                      artist.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey[800],
+                          child: const Icon(
+                            Icons.person,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        );
+                      },
+                    )
+                  : Container(
+                      color: Colors.grey[800],
+                      child: const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Artist name
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  artist.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Artist',
                   style: TextStyle(color: Colors.grey[400], fontSize: 12),
                 ),
               ],

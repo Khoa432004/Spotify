@@ -481,6 +481,48 @@ class DatabaseService {
     }
   }
 
+  /// Lấy liked artists của user với full artist data
+  Future<List<ArtistModel>> getLikedArtists(String userId) async {
+    try {
+      final doc = await _firestore
+          .collection(FirestoreCollections.userLikes)
+          .doc(userId)
+          .get();
+      
+      if (!doc.exists) {
+        return [];
+      }
+
+      final data = doc.data() as Map<String, dynamic>;
+      final artistIds = List<String>.from(data['likedArtists'] ?? []);
+      
+      if (artistIds.isEmpty) {
+        return [];
+      }
+
+      // Fetch artist data for each ID (batch in groups of 10 due to Firestore limit)
+      final List<ArtistModel> artists = [];
+      for (int i = 0; i < artistIds.length; i += 10) {
+        final batch = artistIds.sublist(
+          i,
+          i + 10 > artistIds.length ? artistIds.length : i + 10,
+        );
+        final snapshot = await _firestore
+            .collection(FirestoreCollections.artists)
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+        artists.addAll(
+          snapshot.docs.map((doc) => ArtistModel.fromFirestore(doc)).toList(),
+        );
+      }
+
+      return artists;
+    } catch (e) {
+      print('Error getting liked artists: $e');
+      return [];
+    }
+  }
+
   // ==================== CONCERT OPERATIONS ====================
 
   /// Lấy upcoming concerts
